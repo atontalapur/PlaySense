@@ -248,75 +248,93 @@ class UnderstandThisGame {
     try {
       console.log('UnderstandThisGame: Starting NFL check...');
       
-      // Only look for ACTUAL score changes, not random numbers
-      const possibleScoreContainers = document.querySelectorAll(
-        '[class*="score"], [class*="Score"], [id*="score"], [id*="Score"]'
-      );
+      // Look specifically in ESPN's live game content container
+      const gameContainer = document.querySelector('.contentItem__content.overflow-hidden.contentItem__content--gameStory.flex');
       
-      let foundScores = [];
-      possibleScoreContainers.forEach(container => {
-        // Look for team score patterns (like "14" next to team names)
-        const text = container.textContent.trim();
+      if (!gameContainer) {
+        console.log('Live game container not found');
+        return;
+      }
+      
+      console.log('Found live game container');
+      
+      // Look for scores within the game container
+      const scoreElements = gameContainer.querySelectorAll('*');
+      let teamScores = [];
+      
+      scoreElements.forEach(el => {
+        const text = el.textContent.trim();
+        // Look for standalone numbers that could be scores
         if (/^\d{1,2}$/.test(text) && parseInt(text) >= 0 && parseInt(text) <= 99) {
-          const parentText = container.parentElement ? container.parentElement.textContent : '';
-          // Only count if it's near team-related content
-          if (parentText.length > text.length * 3) { // Has context around it
-            foundScores.push(text);
+          // Check if this looks like it's positioned as a team score
+          const rect = el.getBoundingClientRect();
+          if (rect.width > 10 && rect.height > 10) { // Make sure it's visible
+            teamScores.push(text);
           }
         }
       });
       
-      // Only track if we found exactly 2 scores (both teams)
-      if (foundScores.length >= 2) {
-        const currentScore = foundScores.join(' - ');
+      // Check for score changes
+      if (teamScores.length >= 2) {
+        const currentScore = teamScores.slice(0, 2).join(' - '); // Take first 2 scores
         if (this.previousGameState.score !== currentScore) {
-          console.log('Score changed:', currentScore);
+          console.log('Score changed in game container:', currentScore);
           this.previousGameState.score = currentScore;
           this.addEvent('Score Update', `Score: ${currentScore}`);
         }
       }
       
-      // For plays, ONLY look in specific game-related containers
-      const playContainers = document.querySelectorAll(
-        '[class*="play"], [class*="Play"], [class*="drive"], [class*="Drive"], [class*="recap"], [class*="Recap"]'
-      );
+      // Look for play-by-play text within the game container
+      const allTextElements = gameContainer.querySelectorAll('*');
+      let recentPlays = [];
       
-      let latestPlay = null;
-      let latestPlayTime = 0;
-      
-      playContainers.forEach(container => {
-        const text = container.textContent.trim().toLowerCase();
+      allTextElements.forEach(el => {
+        const text = el.textContent.trim();
         
-        // Only consider if it's substantial text (likely a play description)
-        if (text.length > 20 && text.length < 200) {
-          // Check if it contains play keywords AND time/down indicators
-          const hasPlayKeyword = text.includes('penalty') || text.includes('field goal') || 
-                                 text.includes('touchdown') || text.includes('interception');
-          const hasGameContext = text.includes('yard') || text.includes('down') || 
-                                 text.includes(':') || text.match(/\d+\s*-\s*\d+/);
+        // Look for substantial text that contains game events
+        if (text.length > 15 && text.length < 300) {
+          const lowerText = text.toLowerCase();
           
-          if (hasPlayKeyword && hasGameContext) {
-            // Try to extract timestamp or use dom position as indicator of recency
-            const rect = container.getBoundingClientRect();
-            const positionScore = rect.top + rect.left; // Simple position heuristic
-            
-            if (!latestPlay || positionScore < latestPlayTime) {
-              latestPlay = container.textContent.trim();
-              latestPlayTime = positionScore;
-            }
+          // Check for play keywords
+          const hasPlayEvent = lowerText.includes('penalty') || 
+                              lowerText.includes('field goal') || 
+                              lowerText.includes('touchdown') ||
+                              lowerText.includes('interception') ||
+                              lowerText.includes('fumble') ||
+                              lowerText.includes('sack');
+                              
+          // Check for game context indicators
+          const hasGameContext = lowerText.includes('yard') || 
+                                lowerText.includes('down') || 
+                                lowerText.match(/\d+:\d+/) || // time format
+                                lowerText.match(/\d+\s*(st|nd|rd|th)/); // downs
+          
+          if (hasPlayEvent && hasGameContext) {
+            recentPlays.push({
+              element: el,
+              text: text,
+              position: el.getBoundingClientRect().top
+            });
           }
         }
       });
       
-      // Only update if we found a new play that's different from last time
-      if (latestPlay && this.previousGameState.lastPlay !== latestPlay) {
-        console.log('New play detected:', latestPlay);
-        this.previousGameState.lastPlay = latestPlay;
-        const explanation = this.explainNFLPlay(latestPlay);
-        this.addEvent('NFL Play', explanation);
+      // Sort by position (topmost = most recent usually)
+      recentPlays.sort((a, b) => a.position - b.position);
+      
+      // Check the most recent play
+      if (recentPlays.length > 0) {
+        const latestPlay = recentPlays[0].text;
+        
+        if (this.previousGameState.lastPlay !== latestPlay) {
+          console.log('New play detected in game container:', latestPlay);
+          this.previousGameState.lastPlay = latestPlay;
+          const explanation = this.explainNFLPlay(latestPlay);
+          this.addEvent('NFL Play', explanation);
+        }
       }
       
-      console.log(`Checked ${playContainers.length} play containers, found scores: ${foundScores.length}`);
+      console.log(`Found ${teamScores.length} scores, ${recentPlays.length} potential plays in game container`);
       
     } catch (error) {
       console.log('Error checking NFL updates:', error);
