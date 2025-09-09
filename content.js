@@ -26,6 +26,10 @@ class UnderstandThisGame {
           gameType: this.gameType,
           eventCount: this.eventLog.length 
         });
+      } else if (request.action === 'showOverlay') {
+        this.showOverlay();
+      } else if (request.action === 'hideOverlay') {
+        this.hideOverlay();
       }
     });
   }
