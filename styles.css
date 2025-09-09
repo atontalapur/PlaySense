@@ -33,47 +33,27 @@
   justify-content: space-between;
   align-items: center;
   font-weight: bold;
-  cursor: grab;
-  user-select: none;
-}
-
-#understand-game-header:active {
-  cursor: grabbing;
-}
-
-.header-buttons {
-  display: flex;
-  gap: 5px;
+  cursor: move;
 }
 
 #understand-game-header button {
   background: none;
   border: none;
   color: white;
-  font-size: 14px;
+  font-size: 16px;
   cursor: pointer;
-  padding: 4px 6px;
-  margin: 0;
-  width: 24px;
-  height: 24px;
+  padding: 0;
+  margin-left: 10px;
+  width: 20px;
+  height: 20px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 3px;
-  transition: background-color 0.2s;
 }
 
 #understand-game-header button:hover {
   background: rgba(255, 255, 255, 0.2);
-}
-
-#understand-game-close {
-  color: #ff6b6b !important;
-  font-weight: bold;
-}
-
-#understand-game-close:hover {
-  background: rgba(255, 107, 107, 0.2) !important;
 }
 
 #understand-game-content {

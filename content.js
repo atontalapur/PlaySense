@@ -31,6 +31,12 @@ class UnderstandThisGame {
   }
 
   createOverlay() {
+    // Remove any existing overlay first
+    const existingOverlay = document.getElementById('understand-game-overlay');
+    if (existingOverlay) {
+      existingOverlay.remove();
+    }
+    
     this.overlay = document.createElement('div');
     this.overlay.id = 'understand-game-overlay';
     this.overlay.innerHTML = `
@@ -40,12 +46,30 @@ class UnderstandThisGame {
         <button id="understand-game-minimize">−</button>
       </div>
       <div id="understand-game-content">
-        <div id="understand-game-current">Extension inactive</div>
+        <div id="understand-game-current">Extension loaded! Click the extension icon to start.</div>
         <div id="understand-game-log" style="display: none;"></div>
       </div>
     `;
     
+    // Make sure overlay is visible
+    this.overlay.style.display = 'block';
+    this.overlay.style.visibility = 'visible';
+    this.overlay.style.opacity = '1';
+    
+    // Append to body and log for debugging
     document.body.appendChild(this.overlay);
+    console.log('UnderstandThisGame: Overlay created and added to page');
+    
+    // Test if overlay is actually visible
+    setTimeout(() => {
+      const overlayCheck = document.getElementById('understand-game-overlay');
+      if (overlayCheck) {
+        console.log('UnderstandThisGame: Overlay confirmed on page');
+        console.log('Overlay position:', overlayCheck.getBoundingClientRect());
+      } else {
+        console.error('UnderstandThisGame: Overlay not found after creation!');
+      }
+    }, 1000);
     
     // Add event listeners
     document.getElementById('understand-game-toggle-log').addEventListener('click', () => {
@@ -92,9 +116,68 @@ class UnderstandThisGame {
       return;
     }
     
+    // Add demo mode for testing without subscription
+    const isDemoMode = window.location.href.includes('demo=true') || !this.hasSubscriptionContent();
+    
+    if (isDemoMode) {
+      this.startDemoMode();
+    } else {
+      this.checkInterval = setInterval(() => {
+        this.checkForUpdates();
+      }, 3000); // Check every 3 seconds
+    }
+  }
+
+  hasSubscriptionContent() {
+    // Check if we can access live game content
+    const liveElements = document.querySelectorAll('.live-score, .play-by-play, .live-game');
+    return liveElements.length > 0;
+  }
+
+  startDemoMode() {
+    this.updateOverlay('Demo Mode: Simulating game events...');
+    
+    const demoEvents = this.getDemoEvents();
+    let eventIndex = 0;
+    
     this.checkInterval = setInterval(() => {
-      this.checkForUpdates();
-    }, 3000); // Check every 3 seconds
+      if (eventIndex < demoEvents.length) {
+        const event = demoEvents[eventIndex];
+        this.addEvent(event.type, event.description);
+        eventIndex++;
+      } else {
+        // Restart demo
+        eventIndex = 0;
+      }
+    }, 5000); // Show demo event every 5 seconds
+  }
+
+  getDemoEvents() {
+    switch (this.gameType) {
+      case 'nfl':
+        return [
+          { type: 'NFL Play', description: 'TOUCHDOWN! Patrick Mahomes threw a 25-yard pass to Travis Kelce in the end zone! Kansas City scores 6 points!' },
+          { type: 'NFL Play', description: 'Field Goal! The kicker scored 3 points by kicking the ball through the goalposts!' },
+          { type: 'NFL Play', description: 'Interception! The defense caught a pass meant for the offense and took control of the ball!' },
+          { type: 'NFL Play', description: 'Sack! The quarterback was tackled behind the line before he could throw the ball!' },
+        ];
+      case 'mlb':
+        return [
+          { type: 'MLB Score', description: 'HOME RUN! The batter hit the ball out of the park and scored a run!' },
+          { type: 'MLB Inning', description: 'Top of inning 7! The visiting team is now batting (trying to score).' },
+          { type: 'MLB Play', description: 'Strikeout! The pitcher threw 3 strikes past the batter!' },
+          { type: 'MLB Score', description: 'RBI Single! A player got a hit and drove in a teammate to score!' },
+        ];
+      case 'f1':
+        return [
+          { type: 'F1 Position', description: 'OVERTAKE! Lewis Hamilton from Mercedes just passed Max Verstappen from Red Bull for 2nd place!' },
+          { type: 'F1 Event', description: 'Safety Car deployed! All cars must slow down and follow the safety car due to an incident on track.' },
+          { type: 'F1 Position', description: 'Charles Leclerc from Ferrari takes the lead! He\'s now in P1!' },
+          { type: 'F1 Event', description: 'Pit Stop! A driver just pulled into the pit lane to change tires - this takes about 3 seconds!' },
+        ];
+      default:
+        return [{ type: 'Demo', description: 'Demo event for testing!' }];
+    }
   }
 
   stopMonitoring() {
