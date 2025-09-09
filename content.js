@@ -248,74 +248,75 @@ class UnderstandThisGame {
     try {
       console.log('UnderstandThisGame: Starting NFL check...');
       
-      // Find ALL elements that might contain scores (more aggressive search)
-      const allElements = document.querySelectorAll('*');
-      let scoreElements = [];
-      let playElements = [];
+      // Only look for ACTUAL score changes, not random numbers
+      const possibleScoreContainers = document.querySelectorAll(
+        '[class*="score"], [class*="Score"], [id*="score"], [id*="Score"]'
+      );
       
-      allElements.forEach(el => {
-        if (!el || !el.textContent) return;
-        
-        const text = el.textContent.trim().toLowerCase();
-        const isVisible = el.offsetHeight > 0 && el.offsetWidth > 0;
-        
-        if (!isVisible) return;
-        
-        // Look for score patterns (numbers)
-        if (text.match(/^\d{1,2}$/)) {
-          scoreElements.push(el);
-        }
-        
-        // Look for play descriptions
-        if (text.includes('penalty') || 
-            text.includes('field goal') || 
-            text.includes('touchdown') ||
-            text.includes('interception') ||
-            text.includes('fumble') ||
-            text.includes('sack') ||
-            text.includes('yard') ||
-            text.includes('down')) {
-          playElements.push(el);
+      let foundScores = [];
+      possibleScoreContainers.forEach(container => {
+        // Look for team score patterns (like "14" next to team names)
+        const text = container.textContent.trim();
+        if (/^\d{1,2}$/.test(text) && parseInt(text) >= 0 && parseInt(text) <= 99) {
+          const parentText = container.parentElement ? container.parentElement.textContent : '';
+          // Only count if it's near team-related content
+          if (parentText.length > text.length * 3) { // Has context around it
+            foundScores.push(text);
+          }
         }
       });
       
-      console.log(`Found ${scoreElements.length} potential score elements`);
-      console.log(`Found ${playElements.length} potential play elements`);
-      
-      // Check scores
-      let currentScore = '';
-      scoreElements.forEach(el => {
-        currentScore += el.textContent.trim() + ' ';
-      });
-      
-      if (this.previousGameState.score !== currentScore && currentScore.trim()) {
-        console.log('Score changed:', currentScore.trim());
-        this.previousGameState.score = currentScore;
-        this.addEvent('Score Update', `Score: ${currentScore.trim()}`);
+      // Only track if we found exactly 2 scores (both teams)
+      if (foundScores.length >= 2) {
+        const currentScore = foundScores.join(' - ');
+        if (this.previousGameState.score !== currentScore) {
+          console.log('Score changed:', currentScore);
+          this.previousGameState.score = currentScore;
+          this.addEvent('Score Update', `Score: ${currentScore}`);
+        }
       }
       
-      // Check for new plays
-      playElements.forEach(el => {
-        const playText = el.textContent.trim();
+      // For plays, ONLY look in specific game-related containers
+      const playContainers = document.querySelectorAll(
+        '[class*="play"], [class*="Play"], [class*="drive"], [class*="Drive"], [class*="recap"], [class*="Recap"]'
+      );
+      
+      let latestPlay = null;
+      let latestPlayTime = 0;
+      
+      playContainers.forEach(container => {
+        const text = container.textContent.trim().toLowerCase();
         
-        // Only check elements with substantial text (avoid single words)
-        if (playText.length > 10 && 
-            this.previousGameState.lastPlay !== playText) {
+        // Only consider if it's substantial text (likely a play description)
+        if (text.length > 20 && text.length < 200) {
+          // Check if it contains play keywords AND time/down indicators
+          const hasPlayKeyword = text.includes('penalty') || text.includes('field goal') || 
+                                 text.includes('touchdown') || text.includes('interception');
+          const hasGameContext = text.includes('yard') || text.includes('down') || 
+                                 text.includes(':') || text.match(/\d+\s*-\s*\d+/);
           
-          console.log('New play detected:', playText);
-          this.previousGameState.lastPlay = playText;
-          const explanation = this.explainNFLPlay(playText);
-          this.addEvent('NFL Play', explanation);
-          
-          // Only track one play at a time to avoid spam
-          return;
+          if (hasPlayKeyword && hasGameContext) {
+            // Try to extract timestamp or use dom position as indicator of recency
+            const rect = container.getBoundingClientRect();
+            const positionScore = rect.top + rect.left; // Simple position heuristic
+            
+            if (!latestPlay || positionScore < latestPlayTime) {
+              latestPlay = container.textContent.trim();
+              latestPlayTime = positionScore;
+            }
+          }
         }
       });
       
-      // Log what we found for debugging
-      if (scoreElements.length === 0 && playElements.length === 0) {
-        console.log('UnderstandThisGame: No NFL content detected on this page');
+      // Only update if we found a new play that's different from last time
+      if (latestPlay && this.previousGameState.lastPlay !== latestPlay) {
+        console.log('New play detected:', latestPlay);
+        this.previousGameState.lastPlay = latestPlay;
+        const explanation = this.explainNFLPlay(latestPlay);
+        this.addEvent('NFL Play', explanation);
       }
+      
+      console.log(`Checked ${playContainers.length} play containers, found scores: ${foundScores.length}`);
       
     } catch (error) {
       console.log('Error checking NFL updates:', error);
