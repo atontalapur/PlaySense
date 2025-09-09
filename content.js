@@ -1,6 +1,7 @@
 // Content script for UnderstandThisGame extension
 class UnderstandThisGame {
   constructor() {
+    console.log('UnderstandThisGame: Constructor called');
     this.isActive = false;
     this.gameType = null;
     this.lastUpdate = null;
@@ -9,7 +10,9 @@ class UnderstandThisGame {
     this.checkInterval = null;
     this.previousGameState = {};
 
+    console.log('UnderstandThisGame: Initializing...');
     this.init();
+    console.log('UnderstandThisGame: Initialization complete');
   }
 
   init() {
@@ -82,18 +85,13 @@ class UnderstandThisGame {
     document.body.appendChild(this.overlay);
     console.log('UnderstandThisGame: Overlay created and added to page');
 
-    // Add event listeners
-    document.getElementById('understand-game-toggle-log').addEventListener('click', () => {
-      this.toggleLog();
-    });
+    // Add event listeners with a small delay to ensure elements are rendered
+    setTimeout(() => {
+      this.addOverlayEventListeners();
+    }, 100);
 
-    document.getElementById('understand-game-minimize').addEventListener('click', () => {
-      this.overlay.classList.toggle('minimized');
-    });
-
-    document.getElementById('understand-game-close').addEventListener('click', () => {
-      this.hideOverlay();
-    });
+    // Also add event delegation as a fallback
+    this.addEventDelegation();
 
     // Test if overlay is actually visible
     setTimeout(() => {
@@ -107,8 +105,106 @@ class UnderstandThisGame {
     }, 1000);
   }
 
+  addOverlayEventListeners() {
+    try {
+      console.log('Adding overlay event listeners...');
+
+      // Toggle log button
+      const toggleLogBtn = document.getElementById('understand-game-toggle-log');
+      if (toggleLogBtn) {
+        toggleLogBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log('Toggle log button clicked');
+          this.toggleLog();
+        });
+        console.log('Toggle log button listener added');
+      } else {
+        console.error('Toggle log button not found');
+      }
+
+      // Minimize button
+      const minimizeBtn = document.getElementById('understand-game-minimize');
+      if (minimizeBtn) {
+        minimizeBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log('Minimize button clicked');
+          this.overlay.classList.toggle('minimized');
+        });
+        console.log('Minimize button listener added');
+      } else {
+        console.error('Minimize button not found');
+      }
+
+      // Close button
+      const closeBtn = document.getElementById('understand-game-close');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log('Close button clicked');
+          this.hideOverlay();
+        });
+        console.log('Close button listener added');
+      } else {
+        console.error('Close button not found');
+      }
+
+      console.log('All overlay event listeners added successfully');
+    } catch (error) {
+      console.error('Error adding overlay event listeners:', error);
+    }
+  }
+
+  addEventDelegation() {
+    // Use event delegation as a fallback for button clicks
+    document.addEventListener('click', (e) => {
+      // Only handle clicks within our overlay
+      if (!this.overlay || !this.overlay.contains(e.target)) {
+        return;
+      }
+
+      const target = e.target;
+
+      // Handle close button
+      if (target.id === 'understand-game-close') {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Close button clicked (via delegation)');
+        this.hideOverlay();
+        return;
+      }
+
+      // Handle minimize button
+      if (target.id === 'understand-game-minimize') {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Minimize button clicked (via delegation)');
+        this.overlay.classList.toggle('minimized');
+        return;
+      }
+
+      // Handle toggle log button
+      if (target.id === 'understand-game-toggle-log') {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Toggle log button clicked (via delegation)');
+        this.toggleLog();
+        return;
+      }
+    });
+
+    console.log('Event delegation added as fallback');
+  }
+
   makeDraggable() {
     const header = this.overlay.querySelector('#understand-game-header');
+    if (!header) {
+      console.error('Header not found for dragging');
+      return;
+    }
+
     let isDragging = false;
     let currentX;
     let currentY;
@@ -163,10 +259,13 @@ class UnderstandThisGame {
 
   showOverlay() {
     if (this.overlay) {
+      console.log('Showing existing overlay');
       this.overlay.style.display = 'block';
       this.overlay.style.visibility = 'visible';
       this.overlay.style.opacity = '1';
+      this.overlay.style.transition = 'opacity 0.3s ease-in';
     } else {
+      console.log('Creating new overlay');
       this.createOverlay();
     }
   }
@@ -174,14 +273,23 @@ class UnderstandThisGame {
   hideOverlay() {
     if (this.overlay) {
       console.log('Hiding overlay');
-      this.overlay.style.display = 'none';
-      this.overlay.style.visibility = 'hidden';
+
+      // Add a fade-out animation
+      this.overlay.style.transition = 'opacity 0.3s ease-out';
       this.overlay.style.opacity = '0';
+
+      // Hide after animation completes
+      setTimeout(() => {
+        this.overlay.style.display = 'none';
+        this.overlay.style.visibility = 'hidden';
+        console.log('Overlay hidden successfully');
+      }, 300);
 
       // Also stop monitoring when hiding
       if (this.isActive) {
         this.stopMonitoring();
         this.isActive = false;
+        console.log('Monitoring stopped due to overlay hide');
       }
     } else {
       console.log('No overlay to hide');
@@ -1299,10 +1407,17 @@ class UnderstandThisGame {
 }
 
 // Initialize when page loads
+console.log('UnderstandThisGame: Content script loaded');
+console.log('Current URL:', window.location.href);
+console.log('Document ready state:', document.readyState);
+
 if (document.readyState === 'loading') {
+  console.log('UnderstandThisGame: Waiting for DOMContentLoaded');
   document.addEventListener('DOMContentLoaded', () => {
+    console.log('UnderstandThisGame: DOMContentLoaded fired, initializing...');
     new UnderstandThisGame();
   });
 } else {
+  console.log('UnderstandThisGame: DOM already loaded, initializing immediately...');
   new UnderstandThisGame();
 }

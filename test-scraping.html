@@ -130,6 +130,17 @@
             <li><strong>F1 Detection:</strong> Should detect "f1" game type and find overtake, pit stop, safety car,
                 etc.</li>
             <li><strong>Live Detection:</strong> Should detect live indicators and score data</li>
+            <li><strong>Close Button:</strong> The ✕ button in the overlay should properly close/hide the window</li>
+            <li><strong>Minimize Button:</strong> The − button should minimize/expand the overlay</li>
+            <li><strong>Log Button:</strong> The 📋 button should toggle between current status and event log</li>
+        </ul>
+
+        <h3>Debugging Tips:</h3>
+        <ul>
+            <li>Open browser console (F12) to see detailed logging</li>
+            <li>Look for "Close button clicked" messages when clicking the ✕ button</li>
+            <li>Check for any error messages about missing elements</li>
+            <li>Verify that event listeners are being added successfully</li>
         </ul>
     </div>
 
@@ -137,6 +148,20 @@
         // Simulate some dynamic content updates
         let score1 = 21;
         let score2 = 14;
+
+        // Add debugging for extension
+        console.log('Test page loaded');
+        console.log('Current URL:', window.location.href);
+
+        // Check if extension is loaded
+        setTimeout(() => {
+            console.log('Checking for extension...');
+            if (window.chrome && window.chrome.runtime) {
+                console.log('Chrome extension API available');
+            } else {
+                console.log('Chrome extension API not available');
+            }
+        }, 1000);
 
         setInterval(() => {
             // Randomly update scores to test change detection
