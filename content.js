@@ -1,6 +1,7 @@
 // Content script for UnderstandThisGame extension
 class UnderstandThisGame {
   constructor() {
+    console.log('UnderstandThisGame: Constructor called');
     this.isActive = false;
     this.gameType = null;
     this.lastUpdate = null;
@@ -9,7 +10,9 @@ class UnderstandThisGame {
     this.checkInterval = null;
     this.previousGameState = {};
 
+    console.log('UnderstandThisGame: Initializing...');
     this.init();
+    console.log('UnderstandThisGame: Initialization complete');
   }
 
   init() {
@@ -82,18 +85,13 @@ class UnderstandThisGame {
     document.body.appendChild(this.overlay);
     console.log('UnderstandThisGame: Overlay created and added to page');
 
-    // Add event listeners
-    document.getElementById('understand-game-toggle-log').addEventListener('click', () => {
-      this.toggleLog();
-    });
+    // Add event listeners with a small delay to ensure elements are rendered
+    setTimeout(() => {
+      this.addOverlayEventListeners();
+    }, 100);
 
-    document.getElementById('understand-game-minimize').addEventListener('click', () => {
-      this.overlay.classList.toggle('minimized');
-    });
-
-    document.getElementById('understand-game-close').addEventListener('click', () => {
-      this.hideOverlay();
-    });
+    // Also add event delegation as a fallback
+    this.addEventDelegation();
 
     // Test if overlay is actually visible
     setTimeout(() => {
@@ -107,8 +105,106 @@ class UnderstandThisGame {
     }, 1000);
   }
 
+  addOverlayEventListeners() {
+    try {
+      console.log('Adding overlay event listeners...');
+
+      // Toggle log button
+      const toggleLogBtn = document.getElementById('understand-game-toggle-log');
+      if (toggleLogBtn) {
+        toggleLogBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log('Toggle log button clicked');
+          this.toggleLog();
+        });
+        console.log('Toggle log button listener added');
+      } else {
+        console.error('Toggle log button not found');
+      }
+
+      // Minimize button
+      const minimizeBtn = document.getElementById('understand-game-minimize');
+      if (minimizeBtn) {
+        minimizeBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log('Minimize button clicked');
+          this.overlay.classList.toggle('minimized');
+        });
+        console.log('Minimize button listener added');
+      } else {
+        console.error('Minimize button not found');
+      }
+
+      // Close button
+      const closeBtn = document.getElementById('understand-game-close');
+      if (closeBtn) {
+        closeBtn.addEventListener('click', (e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          console.log('Close button clicked');
+          this.hideOverlay();
+        });
+        console.log('Close button listener added');
+      } else {
+        console.error('Close button not found');
+      }
+
+      console.log('All overlay event listeners added successfully');
+    } catch (error) {
+      console.error('Error adding overlay event listeners:', error);
+    }
+  }
+
+  addEventDelegation() {
+    // Use event delegation as a fallback for button clicks
+    document.addEventListener('click', (e) => {
+      // Only handle clicks within our overlay
+      if (!this.overlay || !this.overlay.contains(e.target)) {
+        return;
+      }
+
+      const target = e.target;
+
+      // Handle close button
+      if (target.id === 'understand-game-close') {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Close button clicked (via delegation)');
+        this.hideOverlay();
+        return;
+      }
+
+      // Handle minimize button
+      if (target.id === 'understand-game-minimize') {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Minimize button clicked (via delegation)');
+        this.overlay.classList.toggle('minimized');
+        return;
+      }
+
+      // Handle toggle log button
+      if (target.id === 'understand-game-toggle-log') {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log('Toggle log button clicked (via delegation)');
+        this.toggleLog();
+        return;
+      }
+    });
+
+    console.log('Event delegation added as fallback');
+  }
+
   makeDraggable() {
     const header = this.overlay.querySelector('#understand-game-header');
+    if (!header) {
+      console.error('Header not found for dragging');
+      return;
+    }
+
     let isDragging = false;
     let currentX;
     let currentY;
@@ -163,10 +259,13 @@ class UnderstandThisGame {
 
   showOverlay() {
     if (this.overlay) {
+      console.log('Showing existing overlay');
       this.overlay.style.display = 'block';
       this.overlay.style.visibility = 'visible';
       this.overlay.style.opacity = '1';
+      this.overlay.style.transition = 'opacity 0.3s ease-in';
     } else {
+      console.log('Creating new overlay');
       this.createOverlay();
     }
   }
@@ -174,14 +273,23 @@ class UnderstandThisGame {
   hideOverlay() {
     if (this.overlay) {
       console.log('Hiding overlay');
-      this.overlay.style.display = 'none';
-      this.overlay.style.visibility = 'hidden';
+
+      // Add a fade-out animation
+      this.overlay.style.transition = 'opacity 0.3s ease-out';
       this.overlay.style.opacity = '0';
+
+      // Hide after animation completes
+      setTimeout(() => {
+        this.overlay.style.display = 'none';
+        this.overlay.style.visibility = 'hidden';
+        console.log('Overlay hidden successfully');
+      }, 300);
 
       // Also stop monitoring when hiding
       if (this.isActive) {
         this.stopMonitoring();
         this.isActive = false;
+        console.log('Monitoring stopped due to overlay hide');
       }
     } else {
       console.log('No overlay to hide');
@@ -192,16 +300,29 @@ class UnderstandThisGame {
     const url = window.location.href;
     const pageContent = document.body.innerText.toLowerCase();
 
-    // Enhanced game type detection with more specific checks
-    if (this.isNFLPage(url, pageContent)) {
-      this.gameType = 'nfl';
-    } else if (this.isMLBPage(url, pageContent)) {
-      this.gameType = 'mlb';
-    } else if (this.isF1Page(url, pageContent)) {
-      this.gameType = 'f1';
+    // Enhanced game type detection with scoring system
+    const gameScores = {
+      nfl: this.getNFLScore(url, pageContent),
+      mlb: this.getMLBScore(url, pageContent),
+      f1: this.getF1Score(url, pageContent)
+    };
+
+    // Find the game type with the highest score
+    const maxScore = Math.max(...Object.values(gameScores));
+
+    // Only detect a game if the score is above a minimum threshold
+    const minThreshold = 5;
+
+    if (maxScore >= minThreshold) {
+      this.gameType = Object.keys(gameScores).find(key => gameScores[key] === maxScore);
     } else {
       this.gameType = null;
     }
+
+    console.log('Game detection scores:', gameScores);
+    console.log('Detected game type:', this.gameType);
+    console.log('Current URL:', url);
+    console.log('Page content sample:', pageContent.substring(0, 200) + '...');
 
     this.updateOverlay(`Detected: ${this.gameType ? this.gameType.toUpperCase() : 'No supported game'}`);
 
@@ -210,67 +331,163 @@ class UnderstandThisGame {
     }
   }
 
-  isNFLPage(url, pageContent) {
-    // URL patterns for NFL
+  getNFLScore(url, pageContent) {
+    let score = 0;
+    const lowerUrl = url.toLowerCase();
+
+    // URL patterns for NFL (higher weight)
     const nflUrlPatterns = [
-      '/nfl/', '/football/', '/nfl-football/',
-      'nfl.com', 'nflgame', 'nfl-live'
+      { pattern: '/nfl/', weight: 10 },
+      { pattern: 'nfl.com', weight: 10 },
+      { pattern: 'nflgame', weight: 8 },
+      { pattern: 'nfl-live', weight: 8 },
+      { pattern: '/football/', weight: 5 },
+      { pattern: 'nfl-football', weight: 6 }
     ];
 
-    // Content patterns for NFL
+    nflUrlPatterns.forEach(({ pattern, weight }) => {
+      if (lowerUrl.includes(pattern)) {
+        score += weight;
+      }
+    });
+
+    // Content patterns for NFL (more specific terms)
     const nflContentPatterns = [
-      'touchdown', 'field goal', 'quarterback', 'running back',
-      'defense', 'offense', 'nfl', 'football', 'yard line',
-      'first down', 'second down', 'third down', 'fourth down',
-      'interception', 'fumble', 'sack', 'punt', 'kickoff'
+      { pattern: 'touchdown', weight: 8 },
+      { pattern: 'field goal', weight: 8 },
+      { pattern: 'quarterback', weight: 7 },
+      { pattern: 'running back', weight: 7 },
+      { pattern: 'yard line', weight: 6 },
+      { pattern: 'first down', weight: 6 },
+      { pattern: 'second down', weight: 6 },
+      { pattern: 'third down', weight: 6 },
+      { pattern: 'fourth down', weight: 6 },
+      { pattern: 'interception', weight: 7 },
+      { pattern: 'fumble', weight: 7 },
+      { pattern: 'sack', weight: 6 },
+      { pattern: 'punt', weight: 6 },
+      { pattern: 'kickoff', weight: 6 },
+      { pattern: 'end zone', weight: 7 },
+      { pattern: 'goal line', weight: 6 },
+      { pattern: 'extra point', weight: 6 },
+      { pattern: 'two point conversion', weight: 6 },
+      { pattern: 'nfl', weight: 3 }, // Lower weight for generic term
+      { pattern: 'football', weight: 2 } // Lower weight for generic term
     ];
 
-    const hasNflUrl = nflUrlPatterns.some(pattern => url.toLowerCase().includes(pattern));
-    const hasNflContent = nflContentPatterns.some(pattern => pageContent.includes(pattern));
+    nflContentPatterns.forEach(({ pattern, weight }) => {
+      if (pageContent.includes(pattern)) {
+        score += weight;
+      }
+    });
 
-    return hasNflUrl || hasNflContent;
+    return score;
   }
 
-  isMLBPage(url, pageContent) {
-    // URL patterns for MLB
+  getMLBScore(url, pageContent) {
+    let score = 0;
+    const lowerUrl = url.toLowerCase();
+
+    // URL patterns for MLB (higher weight)
     const mlbUrlPatterns = [
-      '/mlb/', '/baseball/', '/mlb-baseball/',
-      'mlb.com', 'mlbgame', 'mlb-live'
+      { pattern: '/mlb/', weight: 10 },
+      { pattern: 'mlb.com', weight: 10 },
+      { pattern: 'mlbgame', weight: 8 },
+      { pattern: 'mlb-live', weight: 8 },
+      { pattern: '/baseball/', weight: 5 },
+      { pattern: 'mlb-baseball', weight: 6 }
     ];
 
-    // Content patterns for MLB
+    mlbUrlPatterns.forEach(({ pattern, weight }) => {
+      if (lowerUrl.includes(pattern)) {
+        score += weight;
+      }
+    });
+
+    // Content patterns for MLB (more specific terms)
     const mlbContentPatterns = [
-      'inning', 'home run', 'strikeout', 'baseball', 'mlb',
-      'pitcher', 'batter', 'homerun', 'strike', 'ball',
-      'base hit', 'double play', 'triple play', 'walk',
-      'error', 'wild pitch', 'balk', 'sacrifice'
+      { pattern: 'home run', weight: 8 },
+      { pattern: 'strikeout', weight: 7 },
+      { pattern: 'inning', weight: 6 },
+      { pattern: 'pitcher', weight: 6 },
+      { pattern: 'batter', weight: 6 },
+      { pattern: 'homerun', weight: 7 },
+      { pattern: 'base hit', weight: 6 },
+      { pattern: 'double play', weight: 7 },
+      { pattern: 'triple play', weight: 7 },
+      { pattern: 'walk', weight: 6 },
+      { pattern: 'wild pitch', weight: 6 },
+      { pattern: 'balk', weight: 6 },
+      { pattern: 'sacrifice', weight: 6 },
+      { pattern: 'fly out', weight: 6 },
+      { pattern: 'ground out', weight: 6 },
+      { pattern: 'strike zone', weight: 6 },
+      { pattern: 'mound', weight: 5 },
+      { pattern: 'diamond', weight: 5 },
+      { pattern: 'mlb', weight: 3 }, // Lower weight for generic term
+      { pattern: 'baseball', weight: 2 } // Lower weight for generic term
     ];
 
-    const hasMlbUrl = mlbUrlPatterns.some(pattern => url.toLowerCase().includes(pattern));
-    const hasMlbContent = mlbContentPatterns.some(pattern => pageContent.includes(pattern));
+    mlbContentPatterns.forEach(({ pattern, weight }) => {
+      if (pageContent.includes(pattern)) {
+        score += weight;
+      }
+    });
 
-    return hasMlbUrl || hasMlbContent;
+    return score;
   }
 
-  isF1Page(url, pageContent) {
-    // URL patterns for F1
+  getF1Score(url, pageContent) {
+    let score = 0;
+    const lowerUrl = url.toLowerCase();
+
+    // URL patterns for F1 (higher weight)
     const f1UrlPatterns = [
-      '/f1/', '/formula-1/', '/formula1/',
-      'f1.com', 'formula1.com', 'f1-live', 'formula-1-live'
+      { pattern: '/f1/', weight: 10 },
+      { pattern: 'f1.com', weight: 10 },
+      { pattern: 'formula1.com', weight: 10 },
+      { pattern: 'f1-live', weight: 8 },
+      { pattern: 'formula-1-live', weight: 8 },
+      { pattern: '/formula-1/', weight: 8 },
+      { pattern: '/formula1/', weight: 8 }
     ];
 
-    // Content patterns for F1
+    f1UrlPatterns.forEach(({ pattern, weight }) => {
+      if (lowerUrl.includes(pattern)) {
+        score += weight;
+      }
+    });
+
+    // Content patterns for F1 (more specific terms)
     const f1ContentPatterns = [
-      'formula 1', 'formula one', 'f1', 'grand prix',
-      'lap time', 'qualifying', 'race', 'driver',
-      'overtake', 'pit stop', 'safety car', 'championship',
-      'pole position', 'fastest lap', 'drs', 'kers'
+      { pattern: 'formula 1', weight: 8 },
+      { pattern: 'formula one', weight: 8 },
+      { pattern: 'grand prix', weight: 7 },
+      { pattern: 'lap time', weight: 6 },
+      { pattern: 'qualifying', weight: 6 },
+      { pattern: 'overtake', weight: 7 },
+      { pattern: 'pit stop', weight: 6 },
+      { pattern: 'safety car', weight: 7 },
+      { pattern: 'pole position', weight: 6 },
+      { pattern: 'fastest lap', weight: 6 },
+      { pattern: 'drs', weight: 5 },
+      { pattern: 'kers', weight: 5 },
+      { pattern: 'championship', weight: 6 },
+      { pattern: 'constructors', weight: 6 },
+      { pattern: 'grid', weight: 5 },
+      { pattern: 'sector', weight: 5 },
+      { pattern: 'f1', weight: 3 }, // Lower weight for generic term
+      { pattern: 'race', weight: 2 }, // Lower weight for generic term
+      { pattern: 'driver', weight: 2 } // Lower weight for generic term
     ];
 
-    const hasF1Url = f1UrlPatterns.some(pattern => url.toLowerCase().includes(pattern));
-    const hasF1Content = f1ContentPatterns.some(pattern => pageContent.includes(pattern));
+    f1ContentPatterns.forEach(({ pattern, weight }) => {
+      if (pageContent.includes(pattern)) {
+        score += weight;
+      }
+    });
 
-    return hasF1Url || hasF1Content;
+    return score;
   }
 
   toggle() {
@@ -1299,10 +1516,17 @@ class UnderstandThisGame {
 }
 
 // Initialize when page loads
+console.log('UnderstandThisGame: Content script loaded');
+console.log('Current URL:', window.location.href);
+console.log('Document ready state:', document.readyState);
+
 if (document.readyState === 'loading') {
+  console.log('UnderstandThisGame: Waiting for DOMContentLoaded');
   document.addEventListener('DOMContentLoaded', () => {
+    console.log('UnderstandThisGame: DOMContentLoaded fired, initializing...');
     new UnderstandThisGame();
   });
 } else {
+  console.log('UnderstandThisGame: DOM already loaded, initializing immediately...');
   new UnderstandThisGame();
 }
