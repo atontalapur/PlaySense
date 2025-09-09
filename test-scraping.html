@@ -149,6 +149,20 @@
         let score1 = 21;
         let score2 = 14;
 
+        // Add debugging for extension
+        console.log('Test page loaded');
+        console.log('Current URL:', window.location.href);
+
+        // Check if extension is loaded
+        setTimeout(() => {
+            console.log('Checking for extension...');
+            if (window.chrome && window.chrome.runtime) {
+                console.log('Chrome extension API available');
+            } else {
+                console.log('Chrome extension API not available');
+            }
+        }, 1000);
+
         setInterval(() => {
             // Randomly update scores to test change detection
             if (Math.random() < 0.1) {

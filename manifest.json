@@ -10,11 +10,20 @@
   ],
   "host_permissions": [
     "https://www.espn.com/*",
-    "https://espn.com/*"
+    "https://espn.com/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "file:///*"
   ],
   "content_scripts": [
     {
-      "matches": ["https://www.espn.com/*", "https://espn.com/*"],
+      "matches": [
+        "https://www.espn.com/*", 
+        "https://espn.com/*",
+        "http://localhost/*",
+        "http://127.0.0.1/*",
+        "file:///*"
+      ],
       "js": ["content.js"],
       "css": ["styles.css"]
     }

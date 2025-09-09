@@ -1,6 +1,7 @@
 // Content script for UnderstandThisGame extension
 class UnderstandThisGame {
   constructor() {
+    console.log('UnderstandThisGame: Constructor called');
     this.isActive = false;
     this.gameType = null;
     this.lastUpdate = null;
@@ -9,7 +10,9 @@ class UnderstandThisGame {
     this.checkInterval = null;
     this.previousGameState = {};
 
+    console.log('UnderstandThisGame: Initializing...');
     this.init();
+    console.log('UnderstandThisGame: Initialization complete');
   }
 
   init() {
@@ -1404,10 +1407,17 @@ class UnderstandThisGame {
 }
 
 // Initialize when page loads
+console.log('UnderstandThisGame: Content script loaded');
+console.log('Current URL:', window.location.href);
+console.log('Document ready state:', document.readyState);
+
 if (document.readyState === 'loading') {
+  console.log('UnderstandThisGame: Waiting for DOMContentLoaded');
   document.addEventListener('DOMContentLoaded', () => {
+    console.log('UnderstandThisGame: DOMContentLoaded fired, initializing...');
     new UnderstandThisGame();
   });
 } else {
+  console.log('UnderstandThisGame: DOM already loaded, initializing immediately...');
   new UnderstandThisGame();
 }
