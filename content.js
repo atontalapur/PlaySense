@@ -374,7 +374,7 @@ class UnderstandThisGame {
       return 'Interception! The defense caught a pass meant for the offense and took control of the ball!';
     } else if (text.includes('fumble')) {
       return 'Fumble! A player dropped the ball and the other team might recover it!';
-    } else if (text.includes('penalty')) {
+    } else if (text.includes('PENALTY')) {
       return 'Penalty! A rule was broken, so the referee is giving yards to one team as punishment!';
     } else if (text.includes('sack')) {
       return 'Sack! The quarterback was tackled behind the line before he could throw the ball!';
