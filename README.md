@@ -1,10 +1,10 @@
-# UnderstandThisGame Chrome Extension
+# PlaySense Chrome Extension
 
 **Making Sports Accessible to Everyone**
 
 ## 🎯 Project Overview
 
-UnderstandThisGame is a Chrome browser extension that transforms complex sports broadcasts into beginner-friendly explanations. It monitors live ESPN games and provides real-time, plain-English explanations of what's happening on screen - perfect for newcomers to sports or those watching with friends who need context.
+PlaySense is a Chrome browser extension that transforms complex sports broadcasts into beginner-friendly explanations. It monitors live ESPN games and provides real-time, plain-English explanations of what's happening on screen - perfect for newcomers to sports or those watching with friends who need context.
 
 ### The Problem We Solve
 
@@ -102,7 +102,7 @@ A seamless, unobtrusive overlay that appears on ESPN pages, instantly explaining
 ### For Developers
 ```bash
 git clone [repository-url]
-cd UnderstandThisGame
+cd PlaySense
 # Load in Chrome as unpacked extension
 ```
 
