@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test ESPN Game Data Scraping</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+
+        .test-section {
+            background: white;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .game-data {
+            background: #e8f4f8;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+
+        .score {
+            font-size: 24px;
+            font-weight: bold;
+            color: #2c5aa0;
+        }
+
+        .play-description {
+            background: #f0f8f0;
+            padding: 10px;
+            margin: 5px 0;
+            border-left: 4px solid #4CAF50;
+        }
+
+        .live-indicator {
+            background: #ff4444;
+            color: white;
+            padding: 5px 10px;
+            border-radius: 15px;
+            display: inline-block;
+            font-weight: bold;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Test ESPN Game Data Scraping</h1>
+    <p>This page simulates ESPN game data to test the UnderstandThisGame extension's web scraping capabilities.</p>
+
+    <div class="test-section">
+        <h2>NFL Game Test</h2>
+        <div class="live-indicator">LIVE</div>
+        <div class="game-data">
+            <div class="score">Patriots 21 - Cowboys 14</div>
+            <div>3rd Quarter - 8:32 remaining</div>
+        </div>
+        <div class="play-description">
+            <strong>2nd and 8 at DAL 25:</strong> Tom Brady pass complete to Julian Edelman for 12 yards. First down!
+        </div>
+        <div class="play-description">
+            <strong>1st and 10 at DAL 13:</strong> Sony Michel rush for 3 yards.
+        </div>
+        <div class="play-description">
+            <strong>2nd and 7 at DAL 10:</strong> Tom Brady pass incomplete to Rob Gronkowski.
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>MLB Game Test</h2>
+        <div class="live-indicator">LIVE</div>
+        <div class="game-data">
+            <div class="score">Yankees 4 - Red Sox 2</div>
+            <div>Top 7th Inning</div>
+        </div>
+        <div class="play-description">
+            <strong>Bottom 6th:</strong> Aaron Judge hits a home run to left field! Yankees lead 4-2.
+        </div>
+        <div class="play-description">
+            <strong>Bottom 6th:</strong> Giancarlo Stanton strikes out swinging.
+        </div>
+        <div class="play-description">
+            <strong>Bottom 6th:</strong> Luke Voit walks on 4 pitches.
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>F1 Race Test</h2>
+        <div class="live-indicator">LIVE</div>
+        <div class="game-data">
+            <div>Lap 45 of 58 - Monaco Grand Prix</div>
+        </div>
+        <div class="play-description">
+            <strong>Lap 44:</strong> Lewis Hamilton overtakes Max Verstappen for 2nd position!
+        </div>
+        <div class="play-description">
+            <strong>Lap 43:</strong> Charles Leclerc pits for hard tires.
+        </div>
+        <div class="play-description">
+            <strong>Lap 42:</strong> Safety Car deployed due to incident at Turn 1.
+        </div>
+    </div>
+
+    <div class="test-section">
+        <h2>Instructions for Testing</h2>
+        <ol>
+            <li>Load this page in your browser</li>
+            <li>Open the UnderstandThisGame extension popup</li>
+            <li>Click "Start Monitoring"</li>
+            <li>Check the overlay window for detected game data</li>
+            <li>Look at the browser console for detailed scraping logs</li>
+            <li>Verify that the extension detects the simulated game data</li>
+        </ol>
+
+        <h3>Expected Behavior:</h3>
+        <ul>
+            <li><strong>NFL Detection:</strong> Should detect "nfl" game type and find touchdown, field goal, pass, etc.
+            </li>
+            <li><strong>MLB Detection:</strong> Should detect "mlb" game type and find home run, strikeout, inning, etc.
+            </li>
+            <li><strong>F1 Detection:</strong> Should detect "f1" game type and find overtake, pit stop, safety car,
+                etc.</li>
+            <li><strong>Live Detection:</strong> Should detect live indicators and score data</li>
+        </ul>
+    </div>
+
+    <script>
+        // Simulate some dynamic content updates
+        let score1 = 21;
+        let score2 = 14;
+
+        setInterval(() => {
+            // Randomly update scores to test change detection
+            if (Math.random() < 0.1) {
+                score1 += Math.floor(Math.random() * 3);
+                document.querySelector('.score').textContent = `Patriots ${score1} - Cowboys ${score2}`;
+                console.log('Score updated:', score1, '-', score2);
+            }
+        }, 5000);
+    </script>
+</body>
+
+</html>
