@@ -46,8 +46,11 @@ class UnderstandThisGame {
     this.overlay.innerHTML = `
       <div id="understand-game-header">
         <span>UnderstandThisGame</span>
-        <button id="understand-game-toggle-log">📋</button>
-        <button id="understand-game-minimize">−</button>
+        <div class="header-buttons">
+          <button id="understand-game-toggle-log">📋</button>
+          <button id="understand-game-minimize">−</button>
+          <button id="understand-game-close">✕</button>
+        </div>
       </div>
       <div id="understand-game-content">
         <div id="understand-game-current">Extension loaded! Click the extension icon to start.</div>
@@ -60,9 +63,25 @@ class UnderstandThisGame {
     this.overlay.style.visibility = 'visible';
     this.overlay.style.opacity = '1';
     
+    // Make header draggable
+    this.makeDraggable();
+    
     // Append to body and log for debugging
     document.body.appendChild(this.overlay);
     console.log('UnderstandThisGame: Overlay created and added to page');
+    
+    // Add event listeners
+    document.getElementById('understand-game-toggle-log').addEventListener('click', () => {
+      this.toggleLog();
+    });
+    
+    document.getElementById('understand-game-minimize').addEventListener('click', () => {
+      this.overlay.classList.toggle('minimized');
+    });
+    
+    document.getElementById('understand-game-close').addEventListener('click', () => {
+      this.hideOverlay();
+    });
     
     // Test if overlay is actually visible
     setTimeout(() => {
@@ -74,15 +93,76 @@ class UnderstandThisGame {
         console.error('UnderstandThisGame: Overlay not found after creation!');
       }
     }, 1000);
-    
-    // Add event listeners
-    document.getElementById('understand-game-toggle-log').addEventListener('click', () => {
-      this.toggleLog();
+  }
+
+  makeDraggable() {
+    const header = this.overlay.querySelector('#understand-game-header');
+    let isDragging = false;
+    let currentX;
+    let currentY;
+    let initialX;
+    let initialY;
+    let xOffset = 0;
+    let yOffset = 0;
+
+    header.addEventListener('mousedown', (e) => {
+      if (e.target.tagName === 'BUTTON') return; // Don't drag when clicking buttons
+      
+      initialX = e.clientX - xOffset;
+      initialY = e.clientY - yOffset;
+
+      if (e.target === header || e.target.parentNode === header) {
+        isDragging = true;
+        header.style.cursor = 'grabbing';
+      }
     });
-    
-    document.getElementById('understand-game-minimize').addEventListener('click', () => {
-      this.overlay.classList.toggle('minimized');
+
+    document.addEventListener('mousemove', (e) => {
+      if (isDragging) {
+        e.preventDefault();
+        currentX = e.clientX - initialX;
+        currentY = e.clientY - initialY;
+
+        xOffset = currentX;
+        yOffset = currentY;
+
+        // Ensure overlay stays within viewport bounds
+        const rect = this.overlay.getBoundingClientRect();
+        const maxX = window.innerWidth - rect.width;
+        const maxY = window.innerHeight - rect.height;
+        
+        currentX = Math.min(Math.max(0, currentX), maxX);
+        currentY = Math.min(Math.max(0, currentY), maxY);
+
+        this.overlay.style.transform = `translate3d(${currentX}px, ${currentY}px, 0)`;
+      }
     });
+
+    document.addEventListener('mouseup', () => {
+      if (isDragging) {
+        isDragging = false;
+        header.style.cursor = 'grab';
+      }
+    });
+
+    // Set initial cursor
+    header.style.cursor = 'grab';
+  }
+
+  showOverlay() {
+    if (this.overlay) {
+      this.overlay.style.display = 'block';
+      this.overlay.style.visibility = 'visible';
+      this.overlay.style.opacity = '1';
+    } else {
+      this.createOverlay();
+    }
+  }
+
+  hideOverlay() {
+    if (this.overlay) {
+      this.overlay.style.display = 'none';
+    }
   }
 
   detectGameType() {
@@ -99,7 +179,11 @@ class UnderstandThisGame {
       this.gameType = null;
     }
     
-    this.updateOverlay(`Game detected: ${this.gameType || 'Unknown'}`);
+    this.updateOverlay(`Detected: ${this.gameType ? this.gameType.toUpperCase() : 'No supported game'}`);
+    
+    if (this.gameType) {
+      this.addEvent('System', `Ready to monitor ${this.gameType.toUpperCase()} game`);
+    }
   }
 
   toggle() {
@@ -120,68 +204,10 @@ class UnderstandThisGame {
       return;
     }
     
-    // Add demo mode for testing without subscription
-    const isDemoMode = window.location.href.includes('demo=true') || !this.hasSubscriptionContent();
-    
-    if (isDemoMode) {
-      this.startDemoMode();
-    } else {
-      this.checkInterval = setInterval(() => {
-        this.checkForUpdates();
-      }, 3000); // Check every 3 seconds
-    }
-  }
-
-  hasSubscriptionContent() {
-    // Check if we can access live game content
-    const liveElements = document.querySelectorAll('.live-score, .play-by-play, .live-game');
-    return liveElements.length > 0;
-  }
-
-  startDemoMode() {
-    this.updateOverlay('Demo Mode: Simulating game events...');
-    
-    const demoEvents = this.getDemoEvents();
-    let eventIndex = 0;
-    
+    this.updateOverlay('Monitoring live game data...');
     this.checkInterval = setInterval(() => {
-      if (eventIndex < demoEvents.length) {
-        const event = demoEvents[eventIndex];
-        this.addEvent(event.type, event.description);
-        eventIndex++;
-      } else {
-        // Restart demo
-        eventIndex = 0;
-      }
-    }, 5000); // Show demo event every 5 seconds
-  }
-
-  getDemoEvents() {
-    switch (this.gameType) {
-      case 'nfl':
-        return [
-          { type: 'NFL Play', description: 'TOUCHDOWN! Patrick Mahomes threw a 25-yard pass to Travis Kelce in the end zone! Kansas City scores 6 points!' },
-          { type: 'NFL Play', description: 'Field Goal! The kicker scored 3 points by kicking the ball through the goalposts!' },
-          { type: 'NFL Play', description: 'Interception! The defense caught a pass meant for the offense and took control of the ball!' },
-          { type: 'NFL Play', description: 'Sack! The quarterback was tackled behind the line before he could throw the ball!' },
-        ];
-      case 'mlb':
-        return [
-          { type: 'MLB Score', description: 'HOME RUN! The batter hit the ball out of the park and scored a run!' },
-          { type: 'MLB Inning', description: 'Top of inning 7! The visiting team is now batting (trying to score).' },
-          { type: 'MLB Play', description: 'Strikeout! The pitcher threw 3 strikes past the batter!' },
-          { type: 'MLB Score', description: 'RBI Single! A player got a hit and drove in a teammate to score!' },
-        ];
-      case 'f1':
-        return [
-          { type: 'F1 Position', description: 'OVERTAKE! Lewis Hamilton from Mercedes just passed Max Verstappen from Red Bull for 2nd place!' },
-          { type: 'F1 Event', description: 'Safety Car deployed! All cars must slow down and follow the safety car due to an incident on track.' },
-          { type: 'F1 Position', description: 'Charles Leclerc from Ferrari takes the lead! He\'s now in P1!' },
-          { type: 'F1 Event', description: 'Pit Stop! A driver just pulled into the pit lane to change tires - this takes about 3 seconds!' },
-        ];
-      default:
-        return [{ type: 'Demo', description: 'Demo event for testing!' }];
-    }
+      this.checkForUpdates();
+    }, 3000); // Check every 3 seconds
   }
 
   stopMonitoring() {
@@ -192,6 +218,11 @@ class UnderstandThisGame {
   }
 
   checkForUpdates() {
+    if (!this.isActive) return;
+    
+    // Log what we're checking for debugging
+    console.log(`UnderstandThisGame: Checking for ${this.gameType} updates...`);
+    
     switch (this.gameType) {
       case 'nfl':
         this.checkNFLUpdates();
@@ -203,31 +234,67 @@ class UnderstandThisGame {
         this.checkF1Updates();
         break;
     }
+    
+    // Update overlay with timestamp to show it's working
+    const now = new Date().toLocaleTimeString();
+    if (this.eventLog.length === 0 || 
+        this.eventLog[this.eventLog.length - 1].timestamp !== now) {
+      // Only update if we haven't updated recently
+      this.updateOverlay(`Monitoring... (Last check: ${now})`);
+    }
   }
 
   checkNFLUpdates() {
     try {
-      // Look for score changes
-      const scoreElements = document.querySelectorAll('.score, .ScoreCell__Score, [data-testid="score"]');
-      const playByPlay = document.querySelector('.Gamestrip__Plays, .play-by-play, [data-testid="play-by-play"]');
+      // Look for score changes - more comprehensive selectors
+      const scoreElements = document.querySelectorAll(
+        '.score, .ScoreCell__Score, [data-testid="score"], .Scoreboard__Score, .team-score, .final-score'
+      );
+      const playByPlay = document.querySelector(
+        '.Gamestrip__Plays, .play-by-play, [data-testid="play-by-play"], .GameRecap, .Plays'
+      );
       
       let currentScore = '';
-      scoreElements.forEach(el => currentScore += el.textContent.trim() + ' ');
+      scoreElements.forEach(el => {
+        if (el && el.textContent) {
+          currentScore += el.textContent.trim() + ' ';
+        }
+      });
       
-      if (this.previousGameState.score !== currentScore && currentScore) {
+      if (this.previousGameState.score !== currentScore && currentScore.trim()) {
         this.previousGameState.score = currentScore;
-        this.addEvent('Score Update', `Current score: ${currentScore}`);
+        this.addEvent('Score Update', `Score changed: ${currentScore.trim()}`);
       }
       
-      // Check for recent plays
+      // Check for recent plays with more selectors
       if (playByPlay) {
-        const recentPlay = playByPlay.querySelector('.recent-play, .latest-play, [data-testid="recent-play"]');
-        if (recentPlay) {
-          const playText = recentPlay.textContent.trim();
-          if (this.previousGameState.lastPlay !== playText) {
+        const recentPlays = playByPlay.querySelectorAll(
+          '.recent-play, .latest-play, [data-testid="recent-play"], .play-text, .PlayByPlay__Text'
+        );
+        
+        if (recentPlays.length > 0) {
+          const latestPlay = recentPlays[0];
+          const playText = latestPlay.textContent.trim();
+          
+          if (this.previousGameState.lastPlay !== playText && playText) {
             this.previousGameState.lastPlay = playText;
             const explanation = this.explainNFLPlay(playText);
             this.addEvent('NFL Play', explanation);
+          }
+        }
+      }
+      
+      // Also check for drive information
+      const driveInfo = document.querySelector('.drive-summary, .Drive, [data-testid="drive"]');
+      if (driveInfo) {
+        const driveText = driveInfo.textContent.trim();
+        if (this.previousGameState.drive !== driveText && driveText) {
+          this.previousGameState.drive = driveText;
+          // Only add significant drive changes
+          if (driveText.toLowerCase().includes('touchdown') || 
+              driveText.toLowerCase().includes('field goal') ||
+              driveText.toLowerCase().includes('turnover')) {
+            this.addEvent('Drive Update', this.explainNFLPlay(driveText));
           }
         }
       }
