@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {
+      width: 300px;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      margin: 0;
+    }
+    
+    .header {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    
+    .header h1 {
+      margin: 0;
+      font-size: 18px;
+      font-weight: bold;
+    }
+    
+    .header p {
+      margin: 5px 0 0 0;
+      font-size: 12px;
+      opacity: 0.8;
+    }
+    
+    .status {
+      background: rgba(255, 255, 255, 0.2);
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 15px;
+      text-align: center;
+    }
+    
+    .status-indicator {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: inline-block;
+      margin-right: 8px;
+    }
+    
+    .status-indicator.active {
+      background: #4CAF50;
+      animation: pulse 2s infinite;
+    }
+    
+    .status-indicator.inactive {
+      background: #f44336;
+    }
+    
+    .controls {
+      text-align: center;
+    }
+    
+    .btn {
+      background: rgba(255, 255, 255, 0.2);
+      border: 2px solid rgba(255, 255, 255, 0.3);
+      color: white;
+      padding: 12px 24px;
+      border-radius: 25px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: bold;
+      transition: all 0.3s ease;
+      width: 100%;
+      margin: 5px 0;
+    }
+    
+    .btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+      border-color: rgba(255, 255, 255, 0.5);
+      transform: translateY(-2px);
+    }
+    
+    .btn:active {
+      transform: translateY(0);
+    }
+    
+    .btn.primary {
+      background: rgba(255, 255, 255, 0.9);
+      color: #667eea;
+      border-color: white;
+    }
+    
+    .btn.primary:hover {
+      background: white;
+    }
+    
+    .game-info {
+      background: rgba(0, 0, 0, 0.2);
+      padding: 10px;
+      border-radius: 6px;
+      margin: 10px 0;
+      font-size: 12px;
+      text-align: center;
+    }
+    
+    .game-info .label {
+      opacity: 0.7;
+      display: block;
+      margin-bottom: 4px;
+    }
+    
+    .game-info .value {
+      font-weight: bold;
+      text-transform: uppercase;
+    }
+    
+    @keyframes pulse {
+      0% { opacity: 1; }
+      50% { opacity: 0.5; }
+      100% { opacity: 1; }
+    }
+    
+    .instructions {
+      background: rgba(0, 0, 0, 0.2);
+      padding: 12px;
+      border-radius: 6px;
+      font-size: 11px;
+      line-height: 1.4;
+      margin-top: 15px;
+    }
+    
+    .instructions ul {
+      margin: 8px 0;
+      padding-left: 16px;
+    }
+    
+    .instructions li {
+      margin: 4px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>UnderstandThisGame</h1>
+    <p>Sports explained for beginners</p>
+  </div>
+  
+  <div class="status">
+    <span class="status-indicator" id="statusIndicator"></span>
+    <span id="statusText">Loading...</span>
+  </div>
+  
+  <div class="game-info">
+    <span class="label">Detected Game:</span>
+    <span class="value" id="gameType">Unknown</span>
+  </div>
+  
+  <div class="game-info">
+    <span class="label">Events Logged:</span>
+    <span class="value" id="eventCount">0</span>
+  </div>
+  
+  <div class="controls">
+    <button class="btn primary" id="toggleBtn">Start Monitoring</button>
+    <button class="btn" id="showOverlayBtn">Show Window</button>
+    <button class="btn" id="hideOverlayBtn">Hide Window</button>
+  </div>
+  
+  <div class="instructions">
+    <strong>How to use:</strong>
+    <ul>
+      <li>Navigate to an ESPN game page</li>
+      <li>Click "Start Monitoring" when the game begins</li>
+      <li>Watch the overlay in the top-left corner</li>
+      <li>Click 📋 to see event history</li>
+    </ul>
+    <strong>Supported:</strong> NFL, MLB, Formula 1 on ESPN
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

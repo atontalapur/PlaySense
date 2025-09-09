@@ -1,0 +1,29 @@
+{
+  "manifest_version": 3,
+  "name": "UnderstandThisGame",
+  "version": "1.0",
+  "description": "Explains live sports events in simple terms for beginners",
+  "permissions": [
+    "activeTab",
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://www.espn.com/*",
+    "https://espn.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": ["https://www.espn.com/*", "https://espn.com/*"],
+      "js": ["content.js"],
+      "css": ["styles.css"]
+    }
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "UnderstandThisGame"
+  }
+}
