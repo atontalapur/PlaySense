@@ -300,16 +300,29 @@ class UnderstandThisGame {
     const url = window.location.href;
     const pageContent = document.body.innerText.toLowerCase();
 
-    // Enhanced game type detection with more specific checks
-    if (this.isNFLPage(url, pageContent)) {
-      this.gameType = 'nfl';
-    } else if (this.isMLBPage(url, pageContent)) {
-      this.gameType = 'mlb';
-    } else if (this.isF1Page(url, pageContent)) {
-      this.gameType = 'f1';
+    // Enhanced game type detection with scoring system
+    const gameScores = {
+      nfl: this.getNFLScore(url, pageContent),
+      mlb: this.getMLBScore(url, pageContent),
+      f1: this.getF1Score(url, pageContent)
+    };
+
+    // Find the game type with the highest score
+    const maxScore = Math.max(...Object.values(gameScores));
+
+    // Only detect a game if the score is above a minimum threshold
+    const minThreshold = 5;
+
+    if (maxScore >= minThreshold) {
+      this.gameType = Object.keys(gameScores).find(key => gameScores[key] === maxScore);
     } else {
       this.gameType = null;
     }
+
+    console.log('Game detection scores:', gameScores);
+    console.log('Detected game type:', this.gameType);
+    console.log('Current URL:', url);
+    console.log('Page content sample:', pageContent.substring(0, 200) + '...');
 
     this.updateOverlay(`Detected: ${this.gameType ? this.gameType.toUpperCase() : 'No supported game'}`);
 
@@ -318,67 +331,163 @@ class UnderstandThisGame {
     }
   }
 
-  isNFLPage(url, pageContent) {
-    // URL patterns for NFL
+  getNFLScore(url, pageContent) {
+    let score = 0;
+    const lowerUrl = url.toLowerCase();
+
+    // URL patterns for NFL (higher weight)
     const nflUrlPatterns = [
-      '/nfl/', '/football/', '/nfl-football/',
-      'nfl.com', 'nflgame', 'nfl-live'
+      { pattern: '/nfl/', weight: 10 },
+      { pattern: 'nfl.com', weight: 10 },
+      { pattern: 'nflgame', weight: 8 },
+      { pattern: 'nfl-live', weight: 8 },
+      { pattern: '/football/', weight: 5 },
+      { pattern: 'nfl-football', weight: 6 }
     ];
 
-    // Content patterns for NFL
+    nflUrlPatterns.forEach(({ pattern, weight }) => {
+      if (lowerUrl.includes(pattern)) {
+        score += weight;
+      }
+    });
+
+    // Content patterns for NFL (more specific terms)
     const nflContentPatterns = [
-      'touchdown', 'field goal', 'quarterback', 'running back',
-      'defense', 'offense', 'nfl', 'football', 'yard line',
-      'first down', 'second down', 'third down', 'fourth down',
-      'interception', 'fumble', 'sack', 'punt', 'kickoff'
+      { pattern: 'touchdown', weight: 8 },
+      { pattern: 'field goal', weight: 8 },
+      { pattern: 'quarterback', weight: 7 },
+      { pattern: 'running back', weight: 7 },
+      { pattern: 'yard line', weight: 6 },
+      { pattern: 'first down', weight: 6 },
+      { pattern: 'second down', weight: 6 },
+      { pattern: 'third down', weight: 6 },
+      { pattern: 'fourth down', weight: 6 },
+      { pattern: 'interception', weight: 7 },
+      { pattern: 'fumble', weight: 7 },
+      { pattern: 'sack', weight: 6 },
+      { pattern: 'punt', weight: 6 },
+      { pattern: 'kickoff', weight: 6 },
+      { pattern: 'end zone', weight: 7 },
+      { pattern: 'goal line', weight: 6 },
+      { pattern: 'extra point', weight: 6 },
+      { pattern: 'two point conversion', weight: 6 },
+      { pattern: 'nfl', weight: 3 }, // Lower weight for generic term
+      { pattern: 'football', weight: 2 } // Lower weight for generic term
     ];
 
-    const hasNflUrl = nflUrlPatterns.some(pattern => url.toLowerCase().includes(pattern));
-    const hasNflContent = nflContentPatterns.some(pattern => pageContent.includes(pattern));
+    nflContentPatterns.forEach(({ pattern, weight }) => {
+      if (pageContent.includes(pattern)) {
+        score += weight;
+      }
+    });
 
-    return hasNflUrl || hasNflContent;
+    return score;
   }
 
-  isMLBPage(url, pageContent) {
-    // URL patterns for MLB
+  getMLBScore(url, pageContent) {
+    let score = 0;
+    const lowerUrl = url.toLowerCase();
+
+    // URL patterns for MLB (higher weight)
     const mlbUrlPatterns = [
-      '/mlb/', '/baseball/', '/mlb-baseball/',
-      'mlb.com', 'mlbgame', 'mlb-live'
+      { pattern: '/mlb/', weight: 10 },
+      { pattern: 'mlb.com', weight: 10 },
+      { pattern: 'mlbgame', weight: 8 },
+      { pattern: 'mlb-live', weight: 8 },
+      { pattern: '/baseball/', weight: 5 },
+      { pattern: 'mlb-baseball', weight: 6 }
     ];
 
-    // Content patterns for MLB
+    mlbUrlPatterns.forEach(({ pattern, weight }) => {
+      if (lowerUrl.includes(pattern)) {
+        score += weight;
+      }
+    });
+
+    // Content patterns for MLB (more specific terms)
     const mlbContentPatterns = [
-      'inning', 'home run', 'strikeout', 'baseball', 'mlb',
-      'pitcher', 'batter', 'homerun', 'strike', 'ball',
-      'base hit', 'double play', 'triple play', 'walk',
-      'error', 'wild pitch', 'balk', 'sacrifice'
+      { pattern: 'home run', weight: 8 },
+      { pattern: 'strikeout', weight: 7 },
+      { pattern: 'inning', weight: 6 },
+      { pattern: 'pitcher', weight: 6 },
+      { pattern: 'batter', weight: 6 },
+      { pattern: 'homerun', weight: 7 },
+      { pattern: 'base hit', weight: 6 },
+      { pattern: 'double play', weight: 7 },
+      { pattern: 'triple play', weight: 7 },
+      { pattern: 'walk', weight: 6 },
+      { pattern: 'wild pitch', weight: 6 },
+      { pattern: 'balk', weight: 6 },
+      { pattern: 'sacrifice', weight: 6 },
+      { pattern: 'fly out', weight: 6 },
+      { pattern: 'ground out', weight: 6 },
+      { pattern: 'strike zone', weight: 6 },
+      { pattern: 'mound', weight: 5 },
+      { pattern: 'diamond', weight: 5 },
+      { pattern: 'mlb', weight: 3 }, // Lower weight for generic term
+      { pattern: 'baseball', weight: 2 } // Lower weight for generic term
     ];
 
-    const hasMlbUrl = mlbUrlPatterns.some(pattern => url.toLowerCase().includes(pattern));
-    const hasMlbContent = mlbContentPatterns.some(pattern => pageContent.includes(pattern));
+    mlbContentPatterns.forEach(({ pattern, weight }) => {
+      if (pageContent.includes(pattern)) {
+        score += weight;
+      }
+    });
 
-    return hasMlbUrl || hasMlbContent;
+    return score;
   }
 
-  isF1Page(url, pageContent) {
-    // URL patterns for F1
+  getF1Score(url, pageContent) {
+    let score = 0;
+    const lowerUrl = url.toLowerCase();
+
+    // URL patterns for F1 (higher weight)
     const f1UrlPatterns = [
-      '/f1/', '/formula-1/', '/formula1/',
-      'f1.com', 'formula1.com', 'f1-live', 'formula-1-live'
+      { pattern: '/f1/', weight: 10 },
+      { pattern: 'f1.com', weight: 10 },
+      { pattern: 'formula1.com', weight: 10 },
+      { pattern: 'f1-live', weight: 8 },
+      { pattern: 'formula-1-live', weight: 8 },
+      { pattern: '/formula-1/', weight: 8 },
+      { pattern: '/formula1/', weight: 8 }
     ];
 
-    // Content patterns for F1
+    f1UrlPatterns.forEach(({ pattern, weight }) => {
+      if (lowerUrl.includes(pattern)) {
+        score += weight;
+      }
+    });
+
+    // Content patterns for F1 (more specific terms)
     const f1ContentPatterns = [
-      'formula 1', 'formula one', 'f1', 'grand prix',
-      'lap time', 'qualifying', 'race', 'driver',
-      'overtake', 'pit stop', 'safety car', 'championship',
-      'pole position', 'fastest lap', 'drs', 'kers'
+      { pattern: 'formula 1', weight: 8 },
+      { pattern: 'formula one', weight: 8 },
+      { pattern: 'grand prix', weight: 7 },
+      { pattern: 'lap time', weight: 6 },
+      { pattern: 'qualifying', weight: 6 },
+      { pattern: 'overtake', weight: 7 },
+      { pattern: 'pit stop', weight: 6 },
+      { pattern: 'safety car', weight: 7 },
+      { pattern: 'pole position', weight: 6 },
+      { pattern: 'fastest lap', weight: 6 },
+      { pattern: 'drs', weight: 5 },
+      { pattern: 'kers', weight: 5 },
+      { pattern: 'championship', weight: 6 },
+      { pattern: 'constructors', weight: 6 },
+      { pattern: 'grid', weight: 5 },
+      { pattern: 'sector', weight: 5 },
+      { pattern: 'f1', weight: 3 }, // Lower weight for generic term
+      { pattern: 'race', weight: 2 }, // Lower weight for generic term
+      { pattern: 'driver', weight: 2 } // Lower weight for generic term
     ];
 
-    const hasF1Url = f1UrlPatterns.some(pattern => url.toLowerCase().includes(pattern));
-    const hasF1Content = f1ContentPatterns.some(pattern => pageContent.includes(pattern));
+    f1ContentPatterns.forEach(({ pattern, weight }) => {
+      if (pageContent.includes(pattern)) {
+        score += weight;
+      }
+    });
 
-    return hasF1Url || hasF1Content;
+    return score;
   }
 
   toggle() {
