@@ -246,57 +246,75 @@ class UnderstandThisGame {
 
   checkNFLUpdates() {
     try {
-      // Look for score changes - more comprehensive selectors
-      const scoreElements = document.querySelectorAll(
-        '.score, .ScoreCell__Score, [data-testid="score"], .Scoreboard__Score, .team-score, .final-score'
-      );
-      const playByPlay = document.querySelector(
-        '.Gamestrip__Plays, .play-by-play, [data-testid="play-by-play"], .GameRecap, .Plays'
-      );
+      console.log('UnderstandThisGame: Starting NFL check...');
       
-      let currentScore = '';
-      scoreElements.forEach(el => {
-        if (el && el.textContent) {
-          currentScore += el.textContent.trim() + ' ';
+      // Find ALL elements that might contain scores (more aggressive search)
+      const allElements = document.querySelectorAll('*');
+      let scoreElements = [];
+      let playElements = [];
+      
+      allElements.forEach(el => {
+        if (!el || !el.textContent) return;
+        
+        const text = el.textContent.trim().toLowerCase();
+        const isVisible = el.offsetHeight > 0 && el.offsetWidth > 0;
+        
+        if (!isVisible) return;
+        
+        // Look for score patterns (numbers)
+        if (text.match(/^\d{1,2}$/)) {
+          scoreElements.push(el);
+        }
+        
+        // Look for play descriptions
+        if (text.includes('penalty') || 
+            text.includes('field goal') || 
+            text.includes('touchdown') ||
+            text.includes('interception') ||
+            text.includes('fumble') ||
+            text.includes('sack') ||
+            text.includes('yard') ||
+            text.includes('down')) {
+          playElements.push(el);
         }
       });
       
+      console.log(`Found ${scoreElements.length} potential score elements`);
+      console.log(`Found ${playElements.length} potential play elements`);
+      
+      // Check scores
+      let currentScore = '';
+      scoreElements.forEach(el => {
+        currentScore += el.textContent.trim() + ' ';
+      });
+      
       if (this.previousGameState.score !== currentScore && currentScore.trim()) {
+        console.log('Score changed:', currentScore.trim());
         this.previousGameState.score = currentScore;
-        this.addEvent('Score Update', `Score changed: ${currentScore.trim()}`);
+        this.addEvent('Score Update', `Score: ${currentScore.trim()}`);
       }
       
-      // Check for recent plays with more selectors
-      if (playByPlay) {
-        const recentPlays = playByPlay.querySelectorAll(
-          '.recent-play, .latest-play, [data-testid="recent-play"], .play-text, .PlayByPlay__Text'
-        );
+      // Check for new plays
+      playElements.forEach(el => {
+        const playText = el.textContent.trim();
         
-        if (recentPlays.length > 0) {
-          const latestPlay = recentPlays[0];
-          const playText = latestPlay.textContent.trim();
+        // Only check elements with substantial text (avoid single words)
+        if (playText.length > 10 && 
+            this.previousGameState.lastPlay !== playText) {
           
-          if (this.previousGameState.lastPlay !== playText && playText) {
-            this.previousGameState.lastPlay = playText;
-            const explanation = this.explainNFLPlay(playText);
-            this.addEvent('NFL Play', explanation);
-          }
+          console.log('New play detected:', playText);
+          this.previousGameState.lastPlay = playText;
+          const explanation = this.explainNFLPlay(playText);
+          this.addEvent('NFL Play', explanation);
+          
+          // Only track one play at a time to avoid spam
+          return;
         }
-      }
+      });
       
-      // Also check for drive information
-      const driveInfo = document.querySelector('.drive-summary, .Drive, [data-testid="drive"]');
-      if (driveInfo) {
-        const driveText = driveInfo.textContent.trim();
-        if (this.previousGameState.drive !== driveText && driveText) {
-          this.previousGameState.drive = driveText;
-          // Only add significant drive changes
-          if (driveText.toLowerCase().includes('touchdown') || 
-              driveText.toLowerCase().includes('field goal') ||
-              driveText.toLowerCase().includes('turnover')) {
-            this.addEvent('Drive Update', this.explainNFLPlay(driveText));
-          }
-        }
+      // Log what we found for debugging
+      if (scoreElements.length === 0 && playElements.length === 0) {
+        console.log('UnderstandThisGame: No NFL content detected on this page');
       }
       
     } catch (error) {
@@ -368,13 +386,13 @@ class UnderstandThisGame {
     
     if (text.includes('touchdown')) {
       return 'TOUCHDOWN! A player reached the end zone and scored 6 points for their team!';
-    } else if (text.includes('Field Goal')) {
+    } else if (text.includes('field goal')) {
       return 'Field Goal! The kicker scored 3 points by kicking the ball through the goalposts!';
     } else if (text.includes('interception')) {
       return 'Interception! The defense caught a pass meant for the offense and took control of the ball!';
     } else if (text.includes('fumble')) {
       return 'Fumble! A player dropped the ball and the other team might recover it!';
-    } else if (text.includes('PENALTY')) {
+    } else if (text.includes('penalty')) {
       return 'Penalty! A rule was broken, so the referee is giving yards to one team as punishment!';
     } else if (text.includes('sack')) {
       return 'Sack! The quarterback was tackled behind the line before he could throw the ball!';
