@@ -368,7 +368,7 @@ class UnderstandThisGame {
     
     if (text.includes('touchdown')) {
       return 'TOUCHDOWN! A player reached the end zone and scored 6 points for their team!';
-    } else if (text.includes('field goal')) {
+    } else if (text.includes('Field Goal')) {
       return 'Field Goal! The kicker scored 3 points by kicking the ball through the goalposts!';
     } else if (text.includes('interception')) {
       return 'Interception! The defense caught a pass meant for the offense and took control of the ball!';
