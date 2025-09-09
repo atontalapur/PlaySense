@@ -161,7 +161,18 @@ class UnderstandThisGame {
 
   hideOverlay() {
     if (this.overlay) {
+      console.log('Hiding overlay');
       this.overlay.style.display = 'none';
+      this.overlay.style.visibility = 'hidden';
+      this.overlay.style.opacity = '0';
+      
+      // Also stop monitoring when hiding
+      if (this.isActive) {
+        this.stopMonitoring();
+        this.isActive = false;
+      }
+    } else {
+      console.log('No overlay to hide');
     }
   }
 
