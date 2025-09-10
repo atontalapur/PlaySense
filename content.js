@@ -1,8 +1,8 @@
-// Content script for UnderstandThisGame extension
-class UnderstandThisGame {
+// Content script for PlaySense extension
+class PlaySense {
   constructor() {
     try {
-      console.log('UnderstandThisGame: Constructor called');
+      console.log('PlaySense: Constructor called');
       this.isActive = false;
       this.gameType = null;
       this.lastUpdate = null;
@@ -23,11 +23,11 @@ class UnderstandThisGame {
         errorRate: 0
       };
 
-      console.log('UnderstandThisGame: Initializing...');
+      console.log('PlaySense: Initializing...');
       this.init();
-      console.log('UnderstandThisGame: Initialization complete');
+      console.log('PlaySense: Initialization complete');
     } catch (error) {
-      console.error('UnderstandThisGame: Constructor error:', error);
+      console.error('PlaySense: Constructor error:', error);
       this.handleError('Constructor', error);
     }
   }
@@ -204,7 +204,7 @@ class UnderstandThisGame {
     this.overlay.id = 'understand-game-overlay';
     this.overlay.innerHTML = `
       <div id="understand-game-header">
-        <span>UnderstandThisGame</span>
+        <span>PlaySense</span>
         <div class="header-buttons">
           <button id="understand-game-toggle-log">📋</button>
           <button id="understand-game-minimize">−</button>
@@ -227,7 +227,7 @@ class UnderstandThisGame {
 
     // Append to body and log for debugging
     document.body.appendChild(this.overlay);
-    console.log('UnderstandThisGame: Overlay created and added to page');
+    console.log('PlaySense: Overlay created and added to page');
 
     // Add event listeners with a small delay to ensure elements are rendered
     setTimeout(() => {
@@ -241,10 +241,10 @@ class UnderstandThisGame {
     setTimeout(() => {
       const overlayCheck = document.getElementById('understand-game-overlay');
       if (overlayCheck) {
-        console.log('UnderstandThisGame: Overlay confirmed on page');
+        console.log('PlaySense: Overlay confirmed on page');
         console.log('Overlay position:', overlayCheck.getBoundingClientRect());
       } else {
-        console.error('UnderstandThisGame: Overlay not found after creation!');
+        console.error('PlaySense: Overlay not found after creation!');
       }
     }, 1000);
   }
@@ -966,7 +966,7 @@ class UnderstandThisGame {
       }
 
       // Log what we're checking for debugging
-      console.log(`UnderstandThisGame: Checking for ${this.gameType} updates...`);
+      console.log(`PlaySense: Checking for ${this.gameType} updates...`);
       console.log(`Page URL: ${window.location.href}`);
       console.log(`Page title: ${document.title}`);
 
@@ -1055,7 +1055,7 @@ class UnderstandThisGame {
 
   checkNFLUpdates() {
     try {
-      console.log('UnderstandThisGame: Starting NFL check...');
+      console.log('PlaySense: Starting NFL check...');
 
       // Multiple selectors to find game data containers
       const gameContainers = [
@@ -1285,7 +1285,7 @@ class UnderstandThisGame {
 
   checkMLBUpdates() {
     try {
-      console.log('UnderstandThisGame: Starting MLB check...');
+      console.log('PlaySense: Starting MLB check...');
 
       // Multiple selectors to find MLB game data
       const gameContainers = [
@@ -1552,7 +1552,7 @@ class UnderstandThisGame {
 
   checkF1Updates() {
     try {
-      console.log('UnderstandThisGame: Starting F1 check...');
+      console.log('PlaySense: Starting F1 check...');
 
       // Multiple selectors to find F1 race data
       const raceContainers = [
@@ -2013,43 +2013,43 @@ class UnderstandThisGame {
 }
 
 // Initialize when page loads with enhanced error handling
-console.log('UnderstandThisGame: Content script loaded');
+console.log('PlaySense: Content script loaded');
 console.log('Current URL:', window.location.href);
 console.log('Document ready state:', document.readyState);
 
 // Global error handler for uncaught errors
 window.addEventListener('error', (event) => {
   console.error('Global error caught:', event.error);
-  if (window.understandThisGameInstance) {
-    window.understandThisGameInstance.handleError('GlobalError', event.error);
+  if (window.PlaySenseInstance) {
+    window.PlaySenseInstance.handleError('GlobalError', event.error);
   }
 });
 
 // Global unhandled promise rejection handler
 window.addEventListener('unhandledrejection', (event) => {
   console.error('Unhandled promise rejection:', event.reason);
-  if (window.understandThisGameInstance) {
-    window.understandThisGameInstance.handleError('UnhandledRejection', event.reason);
+  if (window.PlaySenseInstance) {
+    window.PlaySenseInstance.handleError('UnhandledRejection', event.reason);
   }
 });
 
 function initializeExtension() {
   try {
-    console.log('UnderstandThisGame: Initializing extension...');
-    window.understandThisGameInstance = new UnderstandThisGame();
-    console.log('UnderstandThisGame: Extension initialized successfully');
+    console.log('PlaySense: Initializing extension...');
+    window.PlaySenseInstance = new PlaySense();
+    console.log('PlaySense: Extension initialized successfully');
   } catch (error) {
-    console.error('UnderstandThisGame: Failed to initialize:', error);
+    console.error('PlaySense: Failed to initialize:', error);
 
     // Retry initialization after a delay (only once)
-    if (!window.understandThisGameRetryAttempted) {
-      window.understandThisGameRetryAttempted = true;
+    if (!window.PlaySenseRetryAttempted) {
+      window.PlaySenseRetryAttempted = true;
       setTimeout(() => {
         try {
-          console.log('UnderstandThisGame: Retrying initialization...');
-          window.understandThisGameInstance = new UnderstandThisGame();
+          console.log('PlaySense: Retrying initialization...');
+          window.PlaySenseInstance = new PlaySense();
         } catch (retryError) {
-          console.error('UnderstandThisGame: Retry failed:', retryError);
+          console.error('PlaySense: Retry failed:', retryError);
         }
       }, 2000);
     }
@@ -2057,12 +2057,12 @@ function initializeExtension() {
 }
 
 if (document.readyState === 'loading') {
-  console.log('UnderstandThisGame: Waiting for DOMContentLoaded');
+  console.log('PlaySense: Waiting for DOMContentLoaded');
   document.addEventListener('DOMContentLoaded', () => {
-    console.log('UnderstandThisGame: DOMContentLoaded fired, initializing...');
+    console.log('PlaySense: DOMContentLoaded fired, initializing...');
     initializeExtension();
   });
 } else {
-  console.log('UnderstandThisGame: DOM already loaded, initializing immediately...');
+  console.log('PlaySense: DOM already loaded, initializing immediately...');
   initializeExtension();
 }

@@ -1,8 +1,8 @@
-// Background service worker for UnderstandThisGame extension
+// Background service worker for PlaySense extension
 
 // Handle extension installation
 chrome.runtime.onInstalled.addListener(() => {
-  console.log('UnderstandThisGame extension installed');
+  console.log('PlaySense extension installed');
 });
 
 // Handle messages between different parts of the extension
@@ -11,7 +11,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     // Could store events in chrome.storage if needed for persistence
     console.log('Game event:', request.event);
   }
-  
+
   // Always return true for async message handling
   return true;
 });
@@ -27,5 +27,5 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
 // Handle browser action (extension icon) click
 chrome.action.onClicked.addListener((tab) => {
   // This won't fire if we have a popup, but kept for completeness
-  chrome.tabs.sendMessage(tab.id, {action: 'toggle'});
+  chrome.tabs.sendMessage(tab.id, { action: 'toggle' });
 });
