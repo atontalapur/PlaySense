@@ -14,6 +14,8 @@ class UnderstandThisGame {
       this.maxErrors = 10;
       this.retryCount = 0;
       this.maxRetries = 3;
+      this.initRetryCount = 0;
+      this.maxInitRetries = 5;
       this.isInitialized = false;
       this.performanceMetrics = {
         detectionTime: 0,
@@ -32,7 +34,21 @@ class UnderstandThisGame {
 
   init() {
     try {
-      this.validateEnvironment();
+      // Wait for environment to be ready
+      if (!this.validateEnvironment()) {
+        this.initRetryCount++;
+        if (this.initRetryCount >= this.maxInitRetries) {
+          console.error('Max initialization retries reached, giving up');
+          this.handleError('InitRetryLimit', new Error('Max initialization retries reached'));
+          return;
+        }
+        console.log(`Environment not ready, waiting... (retry ${this.initRetryCount}/${this.maxInitRetries})`);
+        setTimeout(() => {
+          this.init();
+        }, 1000);
+        return;
+      }
+
       this.createOverlay();
       this.detectGameType();
 
@@ -70,14 +86,31 @@ class UnderstandThisGame {
   }
 
   validateEnvironment() {
-    if (typeof window === 'undefined') {
-      throw new Error('Window object not available');
-    }
-    if (typeof document === 'undefined') {
-      throw new Error('Document object not available');
-    }
-    if (typeof chrome === 'undefined' || !chrome.runtime) {
-      throw new Error('Chrome runtime not available');
+    try {
+      if (typeof window === 'undefined') {
+        console.warn('Window object not available');
+        return false;
+      }
+      if (typeof document === 'undefined') {
+        console.warn('Document object not available');
+        return false;
+      }
+      if (typeof chrome === 'undefined') {
+        console.warn('Chrome object not available');
+        return false;
+      }
+      if (!chrome.runtime) {
+        console.warn('Chrome runtime not available');
+        return false;
+      }
+      if (!document.body) {
+        console.warn('Document body not ready');
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.warn('Environment validation error:', error);
+      return false;
     }
   }
 
@@ -927,7 +960,8 @@ class UnderstandThisGame {
 
       // Validate environment before checking
       if (!this.validateEnvironment()) {
-        this.handleError('EnvironmentValidation', new Error('Environment validation failed'));
+        console.warn('Environment validation failed, skipping update check');
+        this.updateOverlay('Waiting for page to load...');
         return;
       }
 
@@ -2007,15 +2041,18 @@ function initializeExtension() {
   } catch (error) {
     console.error('UnderstandThisGame: Failed to initialize:', error);
 
-    // Retry initialization after a delay
-    setTimeout(() => {
-      try {
-        console.log('UnderstandThisGame: Retrying initialization...');
-        window.understandThisGameInstance = new UnderstandThisGame();
-      } catch (retryError) {
-        console.error('UnderstandThisGame: Retry failed:', retryError);
-      }
-    }, 2000);
+    // Retry initialization after a delay (only once)
+    if (!window.understandThisGameRetryAttempted) {
+      window.understandThisGameRetryAttempted = true;
+      setTimeout(() => {
+        try {
+          console.log('UnderstandThisGame: Retrying initialization...');
+          window.understandThisGameInstance = new UnderstandThisGame();
+        } catch (retryError) {
+          console.error('UnderstandThisGame: Retry failed:', retryError);
+        }
+      }, 2000);
+    }
   }
 }
 
