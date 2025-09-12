@@ -1,52 +1,196 @@
-// Content script for UnderstandThisGame extension
-class UnderstandThisGame {
+// Content script for PlaySense extension
+class PlaySense {
   constructor() {
-    console.log('UnderstandThisGame: Constructor called');
-    this.isActive = false;
-    this.gameType = null;
-    this.lastUpdate = null;
-    this.eventLog = [];
-    this.overlay = null;
-    this.checkInterval = null;
-    this.previousGameState = {};
+    try {
+      console.log('PlaySense: Constructor called');
+      this.isActive = false;
+      this.gameType = null;
+      this.lastUpdate = null;
+      this.eventLog = [];
+      this.overlay = null;
+      this.checkInterval = null;
+      this.previousGameState = {};
+      this.errorCount = 0;
+      this.maxErrors = 10;
+      this.retryCount = 0;
+      this.maxRetries = 3;
+      this.initRetryCount = 0;
+      this.maxInitRetries = 5;
+      this.isInitialized = false;
+      this.performanceMetrics = {
+        detectionTime: 0,
+        updateTime: 0,
+        errorRate: 0
+      };
 
-    console.log('UnderstandThisGame: Initializing...');
-    this.init();
-    console.log('UnderstandThisGame: Initialization complete');
+      console.log('PlaySense: Initializing...');
+      this.init();
+      console.log('PlaySense: Initialization complete');
+    } catch (error) {
+      console.error('PlaySense: Constructor error:', error);
+      this.handleError('Constructor', error);
+    }
   }
 
   init() {
-    this.createOverlay();
-    this.detectGameType();
+    try {
+      // Wait for environment to be ready
+      if (!this.validateEnvironment()) {
+        this.initRetryCount++;
+        if (this.initRetryCount >= this.maxInitRetries) {
+          console.error('Max initialization retries reached, giving up');
+          this.handleError('InitRetryLimit', new Error('Max initialization retries reached'));
+          return;
+        }
+        console.log(`Environment not ready, waiting... (retry ${this.initRetryCount}/${this.maxInitRetries})`);
+        setTimeout(() => {
+          this.init();
+        }, 1000);
+        return;
+      }
 
-    // Re-detect game type periodically in case page content changes
-    this.gameTypeInterval = setInterval(() => {
-      const previousGameType = this.gameType;
+      this.createOverlay();
       this.detectGameType();
 
-      // If game type changed, log it
-      if (previousGameType !== this.gameType) {
-        console.log(`Game type changed from ${previousGameType} to ${this.gameType}`);
-        this.addEvent('System', `Game type changed to ${this.gameType ? this.gameType.toUpperCase() : 'Unknown'}`);
-      }
-    }, 10000); // Check every 10 seconds
+      // Re-detect game type periodically in case page content changes
+      this.gameTypeInterval = setInterval(() => {
+        try {
+          const previousGameType = this.gameType;
+          this.detectGameType();
 
-    // Listen for messages from popup
-    chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-      if (request.action === 'toggle') {
+          // If game type changed, log it
+          if (previousGameType !== this.gameType) {
+            console.log(`Game type changed from ${previousGameType} to ${this.gameType}`);
+            this.addEvent('System', `Game type changed to ${this.gameType ? this.gameType.toUpperCase() : 'Unknown'}`);
+          }
+        } catch (error) {
+          this.handleError('GameTypeDetection', error);
+        }
+      }, 10000); // Check every 10 seconds
+
+      // Listen for messages from popup
+      this.messageListener = (request, sender, sendResponse) => {
+        try {
+          this.handleMessage(request, sender, sendResponse);
+        } catch (error) {
+          this.handleError('MessageHandler', error);
+          sendResponse({ error: 'Message handling failed' });
+        }
+      };
+      chrome.runtime.onMessage.addListener(this.messageListener);
+
+      this.isInitialized = true;
+    } catch (error) {
+      this.handleError('Init', error);
+    }
+  }
+
+  validateEnvironment() {
+    try {
+      if (typeof window === 'undefined') {
+        console.warn('Window object not available');
+        return false;
+      }
+      if (typeof document === 'undefined') {
+        console.warn('Document object not available');
+        return false;
+      }
+      if (typeof chrome === 'undefined') {
+        console.warn('Chrome object not available');
+        return false;
+      }
+      if (!chrome.runtime) {
+        console.warn('Chrome runtime not available');
+        return false;
+      }
+      if (!document.body) {
+        console.warn('Document body not ready');
+        return false;
+      }
+      return true;
+    } catch (error) {
+      console.warn('Environment validation error:', error);
+      return false;
+    }
+  }
+
+  handleMessage(request, sender, sendResponse) {
+    if (!request || typeof request !== 'object') {
+      throw new Error('Invalid request format');
+    }
+
+    switch (request.action) {
+      case 'toggle':
         this.toggle();
-      } else if (request.action === 'getStatus') {
+        sendResponse({ success: true });
+        break;
+      case 'getStatus':
         sendResponse({
           isActive: this.isActive,
           gameType: this.gameType,
-          eventCount: this.eventLog.length
+          eventCount: this.eventLog.length,
+          errorCount: this.errorCount,
+          isInitialized: this.isInitialized,
+          performanceMetrics: this.performanceMetrics
         });
-      } else if (request.action === 'showOverlay') {
+        break;
+      case 'showOverlay':
         this.showOverlay();
-      } else if (request.action === 'hideOverlay') {
+        sendResponse({ success: true });
+        break;
+      case 'hideOverlay':
         this.hideOverlay();
-      }
-    });
+        sendResponse({ success: true });
+        break;
+      case 'reset':
+        this.reset();
+        sendResponse({ success: true });
+        break;
+      default:
+        throw new Error(`Unknown action: ${request.action}`);
+    }
+  }
+
+  handleError(context, error) {
+    this.errorCount++;
+    const errorMessage = `Error in ${context}: ${error.message || error}`;
+    console.error(errorMessage, error);
+
+    // Add to event log
+    this.addEvent('Error', errorMessage);
+
+    // Update performance metrics
+    this.performanceMetrics.errorRate = this.errorCount / (this.errorCount + 1);
+
+    // If too many errors, reset
+    if (this.errorCount >= this.maxErrors) {
+      console.warn('Too many errors, resetting extension');
+      this.reset();
+    }
+
+    // Return error info for debugging
+    return {
+      context,
+      message: error.message || error,
+      stack: error.stack,
+      timestamp: new Date().toISOString()
+    };
+  }
+
+  reset() {
+    try {
+      console.log('Resetting extension...');
+      this.stopMonitoring();
+      this.cleanup();
+      this.errorCount = 0;
+      this.retryCount = 0;
+      this.previousGameState = {};
+      this.eventLog = [];
+      this.isInitialized = false;
+      this.addEvent('System', 'Extension reset due to errors');
+    } catch (error) {
+      console.error('Error during reset:', error);
+    }
   }
 
   createOverlay() {
@@ -128,7 +272,7 @@ class UnderstandThisGame {
 
     // Append to body and log for debugging
     document.body.appendChild(this.overlay);
-    console.log('UnderstandThisGame: Overlay created and added to page');
+    console.log('PlaySense: Overlay created and added to page');
 
     // Make header draggable
     this.makeDraggable();
@@ -137,10 +281,10 @@ class UnderstandThisGame {
     setTimeout(() => {
       const overlayCheck = document.getElementById('understand-game-overlay');
       if (overlayCheck) {
-        console.log('UnderstandThisGame: Overlay confirmed on page');
+        console.log('PlaySense: Overlay confirmed on page');
         console.log('Overlay position:', overlayCheck.getBoundingClientRect());
       } else {
-        console.error('UnderstandThisGame: Overlay not found after creation!');
+        console.error('PlaySense: Overlay not found after creation!');
       }
     }, 100);
   }
@@ -252,197 +396,377 @@ class UnderstandThisGame {
   }
 
   detectGameType() {
-    const url = window.location.href;
-    const pageContent = document.body.innerText.toLowerCase();
+    const startTime = performance.now();
 
-    // Enhanced game type detection with scoring system
-    const gameScores = {
-      nfl: this.getNFLScore(url, pageContent),
-      mlb: this.getMLBScore(url, pageContent),
-      f1: this.getF1Score(url, pageContent)
+    try {
+      // Validate inputs
+      const url = this.validateUrl(window.location.href);
+      const pageContent = this.extractPageContent();
+
+      if (!url || !pageContent) {
+        this.gameType = null;
+        this.updateOverlay('Unable to detect game - invalid page content');
+        return;
+      }
+
+      // Enhanced game type detection with scoring system
+      const gameScores = {
+        nfl: this.getNFLScore(url, pageContent),
+        mlb: this.getMLBScore(url, pageContent),
+        f1: this.getF1Score(url, pageContent)
+      };
+
+      // Validate scores
+      const validScores = Object.values(gameScores).filter(score =>
+        typeof score === 'number' && !isNaN(score) && isFinite(score)
+      );
+
+      if (validScores.length === 0) {
+        this.gameType = null;
+        this.updateOverlay('Unable to detect game - scoring failed');
+        return;
+      }
+
+      // Find the game type with the highest score
+      const maxScore = Math.max(...validScores);
+
+      // Dynamic threshold based on page content quality
+      const minThreshold = this.calculateDynamicThreshold(pageContent);
+
+      if (maxScore >= minThreshold) {
+        this.gameType = Object.keys(gameScores).find(key => gameScores[key] === maxScore);
+
+        // Additional validation for detected game type
+        if (!this.validateGameType(this.gameType, url, pageContent)) {
+          this.gameType = null;
+          this.updateOverlay('Game detection validation failed');
+          return;
+        }
+      } else {
+        this.gameType = null;
+      }
+
+      // Performance tracking
+      this.performanceMetrics.detectionTime = performance.now() - startTime;
+
+      console.log('Game detection scores:', gameScores);
+      console.log('Detected game type:', this.gameType);
+      console.log('Detection threshold:', minThreshold);
+      console.log('Detection time:', this.performanceMetrics.detectionTime + 'ms');
+
+      this.updateOverlay(`Detected: ${this.gameType ? this.gameType.toUpperCase() : 'No supported game'}`);
+
+      if (this.gameType) {
+        this.addEvent('System', `Ready to monitor ${this.gameType.toUpperCase()} game`);
+      }
+    } catch (error) {
+      this.handleError('GameDetection', error);
+      this.gameType = null;
+      this.updateOverlay('Game detection failed');
+    }
+  }
+
+  validateUrl(url) {
+    if (!url || typeof url !== 'string') {
+      return null;
+    }
+
+    try {
+      const urlObj = new URL(url);
+      return urlObj.href;
+    } catch (error) {
+      console.warn('Invalid URL:', url);
+      return null;
+    }
+  }
+
+  extractPageContent() {
+    try {
+      if (!document.body) {
+        return '';
+      }
+
+      // Get text content with better extraction
+      const textContent = document.body.innerText || document.body.textContent || '';
+
+      if (!textContent || textContent.length < 10) {
+        console.warn('Page content too short or empty');
+        return '';
+      }
+
+      return textContent.toLowerCase().trim();
+    } catch (error) {
+      console.error('Error extracting page content:', error);
+      return '';
+    }
+  }
+
+  calculateDynamicThreshold(pageContent) {
+    // Base threshold
+    let threshold = 5;
+
+    // Adjust based on content quality
+    if (pageContent.length < 100) {
+      threshold = 3; // Lower threshold for short content
+    } else if (pageContent.length > 5000) {
+      threshold = 8; // Higher threshold for long content (more noise)
+    }
+
+    // Adjust based on content diversity
+    const uniqueWords = new Set(pageContent.split(/\s+/)).size;
+    if (uniqueWords < 50) {
+      threshold = 3;
+    } else if (uniqueWords > 500) {
+      threshold = 10;
+    }
+
+    return Math.max(3, Math.min(15, threshold));
+  }
+
+  validateGameType(gameType, url, pageContent) {
+    if (!gameType) return false;
+
+    // Additional validation for detected game type
+    const validationPatterns = {
+      nfl: ['nfl', 'football', 'touchdown', 'quarterback'],
+      mlb: ['mlb', 'baseball', 'inning', 'home run'],
+      f1: ['f1', 'formula', 'grand prix', 'lap time']
     };
 
-    // Find the game type with the highest score
-    const maxScore = Math.max(...Object.values(gameScores));
+    const patterns = validationPatterns[gameType];
+    if (!patterns) return false;
 
-    // Only detect a game if the score is above a minimum threshold
-    const minThreshold = 5;
+    // Check if at least 2 validation patterns are present
+    const matches = patterns.filter(pattern =>
+      pageContent.includes(pattern) || url.toLowerCase().includes(pattern)
+    );
 
-    if (maxScore >= minThreshold) {
-      this.gameType = Object.keys(gameScores).find(key => gameScores[key] === maxScore);
-    } else {
-      this.gameType = null;
-    }
-
-    console.log('Game detection scores:', gameScores);
-    console.log('Detected game type:', this.gameType);
-    console.log('Current URL:', url);
-    console.log('Page content sample:', pageContent.substring(0, 200) + '...');
-
-    this.updateOverlay(`Detected: ${this.gameType ? this.gameType.toUpperCase() : 'No supported game'}`);
-
-    if (this.gameType) {
-      this.addEvent('System', `Ready to monitor ${this.gameType.toUpperCase()} game`);
-    }
+    return matches.length >= 2;
   }
 
   getNFLScore(url, pageContent) {
-    let score = 0;
-    const lowerUrl = url.toLowerCase();
+    try {
+      if (!url || !pageContent) return 0;
 
-    // URL patterns for NFL (higher weight)
-    const nflUrlPatterns = [
-      { pattern: '/nfl/', weight: 10 },
-      { pattern: 'nfl.com', weight: 10 },
-      { pattern: 'nflgame', weight: 8 },
-      { pattern: 'nfl-live', weight: 8 },
-      { pattern: '/football/', weight: 5 },
-      { pattern: 'nfl-football', weight: 6 }
-    ];
+      let score = 0;
+      const lowerUrl = url.toLowerCase();
 
-    nflUrlPatterns.forEach(({ pattern, weight }) => {
-      if (lowerUrl.includes(pattern)) {
-        score += weight;
-      }
-    });
+      // URL patterns for NFL (higher weight)
+      const nflUrlPatterns = [
+        { pattern: '/nfl/', weight: 15, exact: false },
+        { pattern: 'nfl.com', weight: 15, exact: false },
+        { pattern: 'nflgame', weight: 12, exact: false },
+        { pattern: 'nfl-live', weight: 12, exact: false },
+        { pattern: '/football/', weight: 8, exact: false },
+        { pattern: 'nfl-football', weight: 10, exact: false },
+        { pattern: 'espn.com/nfl', weight: 20, exact: false },
+        { pattern: 'sports.nfl.com', weight: 18, exact: false }
+      ];
 
-    // Content patterns for NFL (more specific terms)
-    const nflContentPatterns = [
-      { pattern: 'touchdown', weight: 8 },
-      { pattern: 'field goal', weight: 8 },
-      { pattern: 'quarterback', weight: 7 },
-      { pattern: 'running back', weight: 7 },
-      { pattern: 'yard line', weight: 6 },
-      { pattern: 'first down', weight: 6 },
-      { pattern: 'second down', weight: 6 },
-      { pattern: 'third down', weight: 6 },
-      { pattern: 'fourth down', weight: 6 },
-      { pattern: 'interception', weight: 7 },
-      { pattern: 'fumble', weight: 7 },
-      { pattern: 'sack', weight: 6 },
-      { pattern: 'punt', weight: 6 },
-      { pattern: 'kickoff', weight: 6 },
-      { pattern: 'end zone', weight: 7 },
-      { pattern: 'goal line', weight: 6 },
-      { pattern: 'extra point', weight: 6 },
-      { pattern: 'two point conversion', weight: 6 },
-      { pattern: 'nfl', weight: 3 }, // Lower weight for generic term
-      { pattern: 'football', weight: 2 } // Lower weight for generic term
-    ];
+      nflUrlPatterns.forEach(({ pattern, weight, exact }) => {
+        if (exact ? lowerUrl === pattern : lowerUrl.includes(pattern)) {
+          score += weight;
+        }
+      });
 
-    nflContentPatterns.forEach(({ pattern, weight }) => {
-      if (pageContent.includes(pattern)) {
-        score += weight;
-      }
-    });
+      // Content patterns for NFL (more specific terms)
+      const nflContentPatterns = [
+        { pattern: 'touchdown', weight: 10, context: ['scored', 'caught', 'threw'] },
+        { pattern: 'field goal', weight: 10, context: ['kicked', 'made', 'missed'] },
+        { pattern: 'quarterback', weight: 8, context: ['pass', 'threw', 'sacked'] },
+        { pattern: 'running back', weight: 8, context: ['rushed', 'carried', 'fumbled'] },
+        { pattern: 'yard line', weight: 7, context: ['yard', 'line', 'down'] },
+        { pattern: 'first down', weight: 7, context: ['down', 'yard', 'gained'] },
+        { pattern: 'second down', weight: 6, context: ['down', 'yard', 'gained'] },
+        { pattern: 'third down', weight: 6, context: ['down', 'yard', 'gained'] },
+        { pattern: 'fourth down', weight: 6, context: ['down', 'yard', 'gained'] },
+        { pattern: 'interception', weight: 9, context: ['threw', 'caught', 'returned'] },
+        { pattern: 'fumble', weight: 9, context: ['recovered', 'lost', 'forced'] },
+        { pattern: 'sack', weight: 7, context: ['quarterback', 'tackled', 'loss'] },
+        { pattern: 'punt', weight: 6, context: ['kicked', 'returned', 'downed'] },
+        { pattern: 'kickoff', weight: 6, context: ['returned', 'kicked', 'recovered'] },
+        { pattern: 'end zone', weight: 8, context: ['touchdown', 'goal', 'line'] },
+        { pattern: 'goal line', weight: 7, context: ['yard', 'line', 'down'] },
+        { pattern: 'extra point', weight: 7, context: ['kicked', 'made', 'missed'] },
+        { pattern: 'two point conversion', weight: 8, context: ['conversion', 'attempt', 'successful'] },
+        { pattern: 'nfl', weight: 4, context: [] }, // Lower weight for generic term
+        { pattern: 'football', weight: 3, context: [] } // Lower weight for generic term
+      ];
 
-    return score;
+      nflContentPatterns.forEach(({ pattern, weight, context }) => {
+        if (pageContent.includes(pattern)) {
+          let contextBonus = 0;
+
+          // Check for context words that increase confidence
+          if (context.length > 0) {
+            const contextMatches = context.filter(ctx => pageContent.includes(ctx));
+            contextBonus = Math.min(contextMatches.length * 2, 5); // Max 5 point bonus
+          }
+
+          score += weight + contextBonus;
+        }
+      });
+
+      // Penalty for non-NFL sports terms
+      const nonNFLTerms = ['baseball', 'mlb', 'inning', 'home run', 'formula 1', 'f1', 'grand prix'];
+      const nonNFLMatches = nonNFLTerms.filter(term => pageContent.includes(term));
+      score -= nonNFLMatches.length * 2;
+
+      return Math.max(0, score);
+    } catch (error) {
+      this.handleError('NFLScoring', error);
+      return 0;
+    }
   }
 
   getMLBScore(url, pageContent) {
-    let score = 0;
-    const lowerUrl = url.toLowerCase();
+    try {
+      if (!url || !pageContent) return 0;
 
-    // URL patterns for MLB (higher weight)
-    const mlbUrlPatterns = [
-      { pattern: '/mlb/', weight: 10 },
-      { pattern: 'mlb.com', weight: 10 },
-      { pattern: 'mlbgame', weight: 8 },
-      { pattern: 'mlb-live', weight: 8 },
-      { pattern: '/baseball/', weight: 5 },
-      { pattern: 'mlb-baseball', weight: 6 }
-    ];
+      let score = 0;
+      const lowerUrl = url.toLowerCase();
 
-    mlbUrlPatterns.forEach(({ pattern, weight }) => {
-      if (lowerUrl.includes(pattern)) {
-        score += weight;
-      }
-    });
+      // URL patterns for MLB (higher weight)
+      const mlbUrlPatterns = [
+        { pattern: '/mlb/', weight: 15, exact: false },
+        { pattern: 'mlb.com', weight: 15, exact: false },
+        { pattern: 'mlbgame', weight: 12, exact: false },
+        { pattern: 'mlb-live', weight: 12, exact: false },
+        { pattern: '/baseball/', weight: 8, exact: false },
+        { pattern: 'mlb-baseball', weight: 10, exact: false },
+        { pattern: 'espn.com/mlb', weight: 20, exact: false },
+        { pattern: 'sports.mlb.com', weight: 18, exact: false }
+      ];
 
-    // Content patterns for MLB (more specific terms)
-    const mlbContentPatterns = [
-      { pattern: 'home run', weight: 8 },
-      { pattern: 'strikeout', weight: 7 },
-      { pattern: 'inning', weight: 6 },
-      { pattern: 'pitcher', weight: 6 },
-      { pattern: 'batter', weight: 6 },
-      { pattern: 'homerun', weight: 7 },
-      { pattern: 'base hit', weight: 6 },
-      { pattern: 'double play', weight: 7 },
-      { pattern: 'triple play', weight: 7 },
-      { pattern: 'walk', weight: 6 },
-      { pattern: 'wild pitch', weight: 6 },
-      { pattern: 'balk', weight: 6 },
-      { pattern: 'sacrifice', weight: 6 },
-      { pattern: 'fly out', weight: 6 },
-      { pattern: 'ground out', weight: 6 },
-      { pattern: 'strike zone', weight: 6 },
-      { pattern: 'mound', weight: 5 },
-      { pattern: 'diamond', weight: 5 },
-      { pattern: 'mlb', weight: 3 }, // Lower weight for generic term
-      { pattern: 'baseball', weight: 2 } // Lower weight for generic term
-    ];
+      mlbUrlPatterns.forEach(({ pattern, weight, exact }) => {
+        if (exact ? lowerUrl === pattern : lowerUrl.includes(pattern)) {
+          score += weight;
+        }
+      });
 
-    mlbContentPatterns.forEach(({ pattern, weight }) => {
-      if (pageContent.includes(pattern)) {
-        score += weight;
-      }
-    });
+      // Content patterns for MLB (more specific terms)
+      const mlbContentPatterns = [
+        { pattern: 'home run', weight: 10, context: ['hit', 'scored', 'homerun'] },
+        { pattern: 'strikeout', weight: 8, context: ['struck', 'swinging', 'looking'] },
+        { pattern: 'inning', weight: 7, context: ['top', 'bottom', 'ninth'] },
+        { pattern: 'pitcher', weight: 7, context: ['threw', 'struck', 'walked'] },
+        { pattern: 'batter', weight: 7, context: ['hit', 'struck', 'walked'] },
+        { pattern: 'homerun', weight: 10, context: ['hit', 'scored', 'home run'] },
+        { pattern: 'base hit', weight: 7, context: ['single', 'double', 'triple'] },
+        { pattern: 'double play', weight: 8, context: ['turned', 'completed', 'grounded'] },
+        { pattern: 'triple play', weight: 9, context: ['turned', 'completed', 'rare'] },
+        { pattern: 'walk', weight: 6, context: ['base', 'ball', 'four'] },
+        { pattern: 'wild pitch', weight: 6, context: ['threw', 'scored', 'advanced'] },
+        { pattern: 'balk', weight: 6, context: ['called', 'illegal', 'motion'] },
+        { pattern: 'sacrifice', weight: 6, context: ['fly', 'bunt', 'out'] },
+        { pattern: 'fly out', weight: 6, context: ['caught', 'outfield', 'infield'] },
+        { pattern: 'ground out', weight: 6, context: ['fielded', 'thrown', 'first'] },
+        { pattern: 'strike zone', weight: 7, context: ['called', 'umpire', 'pitch'] },
+        { pattern: 'mound', weight: 6, context: ['pitcher', 'threw', 'mound'] },
+        { pattern: 'diamond', weight: 6, context: ['baseball', 'field', 'infield'] },
+        { pattern: 'mlb', weight: 4, context: [] }, // Lower weight for generic term
+        { pattern: 'baseball', weight: 3, context: [] } // Lower weight for generic term
+      ];
 
-    return score;
+      mlbContentPatterns.forEach(({ pattern, weight, context }) => {
+        if (pageContent.includes(pattern)) {
+          let contextBonus = 0;
+
+          // Check for context words that increase confidence
+          if (context.length > 0) {
+            const contextMatches = context.filter(ctx => pageContent.includes(ctx));
+            contextBonus = Math.min(contextMatches.length * 2, 5); // Max 5 point bonus
+          }
+
+          score += weight + contextBonus;
+        }
+      });
+
+      // Penalty for non-MLB sports terms
+      const nonMLBTerms = ['football', 'nfl', 'touchdown', 'formula 1', 'f1', 'grand prix'];
+      const nonMLBMatches = nonMLBTerms.filter(term => pageContent.includes(term));
+      score -= nonMLBMatches.length * 2;
+
+      return Math.max(0, score);
+    } catch (error) {
+      this.handleError('MLBScoring', error);
+      return 0;
+    }
   }
 
   getF1Score(url, pageContent) {
-    let score = 0;
-    const lowerUrl = url.toLowerCase();
+    try {
+      if (!url || !pageContent) return 0;
 
-    // URL patterns for F1 (higher weight)
-    const f1UrlPatterns = [
-      { pattern: '/f1/', weight: 10 },
-      { pattern: 'f1.com', weight: 10 },
-      { pattern: 'formula1.com', weight: 10 },
-      { pattern: 'f1-live', weight: 8 },
-      { pattern: 'formula-1-live', weight: 8 },
-      { pattern: '/formula-1/', weight: 8 },
-      { pattern: '/formula1/', weight: 8 }
-    ];
+      let score = 0;
+      const lowerUrl = url.toLowerCase();
 
-    f1UrlPatterns.forEach(({ pattern, weight }) => {
-      if (lowerUrl.includes(pattern)) {
-        score += weight;
-      }
-    });
+      // URL patterns for F1 (higher weight)
+      const f1UrlPatterns = [
+        { pattern: '/f1/', weight: 15, exact: false },
+        { pattern: 'f1.com', weight: 15, exact: false },
+        { pattern: 'formula1.com', weight: 15, exact: false },
+        { pattern: 'f1-live', weight: 12, exact: false },
+        { pattern: 'formula-1-live', weight: 12, exact: false },
+        { pattern: '/formula-1/', weight: 12, exact: false },
+        { pattern: '/formula1/', weight: 12, exact: false },
+        { pattern: 'espn.com/f1', weight: 20, exact: false },
+        { pattern: 'formula1.com', weight: 18, exact: false }
+      ];
 
-    // Content patterns for F1 (more specific terms)
-    const f1ContentPatterns = [
-      { pattern: 'formula 1', weight: 8 },
-      { pattern: 'formula one', weight: 8 },
-      { pattern: 'grand prix', weight: 7 },
-      { pattern: 'lap time', weight: 6 },
-      { pattern: 'qualifying', weight: 6 },
-      { pattern: 'overtake', weight: 7 },
-      { pattern: 'pit stop', weight: 6 },
-      { pattern: 'safety car', weight: 7 },
-      { pattern: 'pole position', weight: 6 },
-      { pattern: 'fastest lap', weight: 6 },
-      { pattern: 'drs', weight: 5 },
-      { pattern: 'kers', weight: 5 },
-      { pattern: 'championship', weight: 6 },
-      { pattern: 'constructors', weight: 6 },
-      { pattern: 'grid', weight: 5 },
-      { pattern: 'sector', weight: 5 },
-      { pattern: 'f1', weight: 3 }, // Lower weight for generic term
-      { pattern: 'race', weight: 2 }, // Lower weight for generic term
-      { pattern: 'driver', weight: 2 } // Lower weight for generic term
-    ];
+      f1UrlPatterns.forEach(({ pattern, weight, exact }) => {
+        if (exact ? lowerUrl === pattern : lowerUrl.includes(pattern)) {
+          score += weight;
+        }
+      });
 
-    f1ContentPatterns.forEach(({ pattern, weight }) => {
-      if (pageContent.includes(pattern)) {
-        score += weight;
-      }
-    });
+      // Content patterns for F1 (more specific terms)
+      const f1ContentPatterns = [
+        { pattern: 'formula 1', weight: 10, context: ['racing', 'championship', 'season'] },
+        { pattern: 'formula one', weight: 10, context: ['racing', 'championship', 'season'] },
+        { pattern: 'grand prix', weight: 8, context: ['race', 'qualifying', 'monaco'] },
+        { pattern: 'lap time', weight: 7, context: ['fastest', 'personal', 'best'] },
+        { pattern: 'qualifying', weight: 7, context: ['session', 'pole', 'position'] },
+        { pattern: 'overtake', weight: 8, context: ['passed', 'position', 'driver'] },
+        { pattern: 'pit stop', weight: 7, context: ['tires', 'fuel', 'seconds'] },
+        { pattern: 'safety car', weight: 8, context: ['deployed', 'yellow', 'flag'] },
+        { pattern: 'pole position', weight: 7, context: ['qualifying', 'start', 'grid'] },
+        { pattern: 'fastest lap', weight: 7, context: ['bonus', 'point', 'record'] },
+        { pattern: 'drs', weight: 6, context: ['zone', 'activated', 'overtaking'] },
+        { pattern: 'kers', weight: 6, context: ['energy', 'recovery', 'boost'] },
+        { pattern: 'championship', weight: 7, context: ['points', 'leader', 'standings'] },
+        { pattern: 'constructors', weight: 7, context: ['championship', 'team', 'points'] },
+        { pattern: 'grid', weight: 6, context: ['position', 'start', 'formation'] },
+        { pattern: 'sector', weight: 6, context: ['time', 'split', 'track'] },
+        { pattern: 'f1', weight: 4, context: [] }, // Lower weight for generic term
+        { pattern: 'race', weight: 3, context: [] }, // Lower weight for generic term
+        { pattern: 'driver', weight: 3, context: [] } // Lower weight for generic term
+      ];
 
-    return score;
+      f1ContentPatterns.forEach(({ pattern, weight, context }) => {
+        if (pageContent.includes(pattern)) {
+          let contextBonus = 0;
+
+          // Check for context words that increase confidence
+          if (context.length > 0) {
+            const contextMatches = context.filter(ctx => pageContent.includes(ctx));
+            contextBonus = Math.min(contextMatches.length * 2, 5); // Max 5 point bonus
+          }
+
+          score += weight + contextBonus;
+        }
+      });
+
+      // Penalty for non-F1 sports terms
+      const nonF1Terms = ['football', 'nfl', 'touchdown', 'baseball', 'mlb', 'home run'];
+      const nonF1Matches = nonF1Terms.filter(term => pageContent.includes(term));
+      score -= nonF1Matches.length * 2;
+
+      return Math.max(0, score);
+    } catch (error) {
+      this.handleError('F1Scoring', error);
+      return 0;
+    }
   }
 
   toggle() {
@@ -528,52 +852,165 @@ class UnderstandThisGame {
 
   // Clean up all intervals when extension is disabled
   cleanup() {
-    if (this.checkInterval) {
-      clearInterval(this.checkInterval);
-      this.checkInterval = null;
+    try {
+      console.log('Cleaning up extension...');
+
+      // Clear all intervals
+      if (this.checkInterval) {
+        clearInterval(this.checkInterval);
+        this.checkInterval = null;
+      }
+      if (this.gameTypeInterval) {
+        clearInterval(this.gameTypeInterval);
+        this.gameTypeInterval = null;
+      }
+
+      // Remove event listeners
+      if (this.messageListener) {
+        chrome.runtime.onMessage.removeListener(this.messageListener);
+        this.messageListener = null;
+      }
+
+      // Clean up overlay
+      if (this.overlay && this.overlay.parentNode) {
+        this.overlay.parentNode.removeChild(this.overlay);
+        this.overlay = null;
+      }
+
+      // Reset state
+      this.isActive = false;
+      this.isInitialized = false;
+
+      console.log('Extension cleanup complete');
+    } catch (error) {
+      console.error('Error during cleanup:', error);
     }
-    if (this.gameTypeInterval) {
-      clearInterval(this.gameTypeInterval);
-      this.gameTypeInterval = null;
+  }
+
+  // Enhanced initialization with better error recovery
+  reinitialize() {
+    try {
+      console.log('Reinitializing extension...');
+      this.cleanup();
+
+      // Wait a bit before reinitializing
+      setTimeout(() => {
+        try {
+          this.init();
+          this.addEvent('System', 'Extension reinitialized successfully');
+        } catch (error) {
+          this.handleError('Reinitialization', error);
+        }
+      }, 1000);
+    } catch (error) {
+      this.handleError('Reinitialization', error);
     }
   }
 
   checkForUpdates() {
-    if (!this.isActive) return;
+    const startTime = performance.now();
 
-    // Log what we're checking for debugging
-    console.log(`UnderstandThisGame: Checking for ${this.gameType} updates...`);
-    console.log(`Page URL: ${window.location.href}`);
-    console.log(`Page title: ${document.title}`);
+    try {
+      if (!this.isActive) return;
 
-    // Count total elements on page for debugging
-    const totalElements = document.querySelectorAll('*').length;
-    console.log(`Total elements on page: ${totalElements}`);
+      // Validate environment before checking
+      if (!this.validateEnvironment()) {
+        console.warn('Environment validation failed, skipping update check');
+        this.updateOverlay('Waiting for page to load...');
+        return;
+      }
 
-    switch (this.gameType) {
-      case 'nfl':
-        this.checkNFLUpdates();
-        break;
-      case 'mlb':
-        this.checkMLBUpdates();
-        break;
-      case 'f1':
-        this.checkF1Updates();
-        break;
+      // Log what we're checking for debugging
+      console.log(`PlaySense: Checking for ${this.gameType} updates...`);
+      console.log(`Page URL: ${window.location.href}`);
+      console.log(`Page title: ${document.title}`);
+
+      // Count total elements on page for debugging (with performance limit)
+      const totalElements = this.getPageElementCount();
+      console.log(`Total elements on page: ${totalElements}`);
+
+      // Check if page has changed significantly
+      if (this.hasPageChanged()) {
+        console.log('Page content changed significantly, re-detecting game type');
+        this.detectGameType();
+      }
+
+      // Execute game-specific update checks
+      switch (this.gameType) {
+        case 'nfl':
+          this.checkNFLUpdates();
+          break;
+        case 'mlb':
+          this.checkMLBUpdates();
+          break;
+        case 'f1':
+          this.checkF1Updates();
+          break;
+        default:
+          console.warn('Unknown game type for updates:', this.gameType);
+      }
+
+      // Update performance metrics
+      this.performanceMetrics.updateTime = performance.now() - startTime;
+
+      // Update overlay with timestamp to show it's working
+      const now = new Date().toLocaleTimeString();
+      if (this.eventLog.length === 0 ||
+        this.eventLog[this.eventLog.length - 1].timestamp !== now) {
+        // Only update if we haven't updated recently
+        this.updateOverlay(`Monitoring... (Last check: ${now})`);
+      }
+
+      // Reset error count on successful update
+      if (this.errorCount > 0) {
+        this.errorCount = Math.max(0, this.errorCount - 1);
+      }
+
+    } catch (error) {
+      this.handleError('UpdateCheck', error);
     }
+  }
 
-    // Update overlay with timestamp to show it's working
-    const now = new Date().toLocaleTimeString();
-    if (this.eventLog.length === 0 ||
-      this.eventLog[this.eventLog.length - 1].timestamp !== now) {
-      // Only update if we haven't updated recently
-      this.updateOverlay(`Monitoring... (Last check: ${now})`);
+  getPageElementCount() {
+    try {
+      // Limit element counting for performance
+      const elements = document.querySelectorAll('*');
+      return Math.min(elements.length, 10000); // Cap at 10k for performance
+    } catch (error) {
+      console.warn('Error counting page elements:', error);
+      return 0;
+    }
+  }
+
+  hasPageChanged() {
+    try {
+      const currentUrl = window.location.href;
+      const currentTitle = document.title;
+
+      // Check if URL or title changed
+      if (this.lastUpdate &&
+        (this.lastUpdate.url !== currentUrl || this.lastUpdate.title !== currentTitle)) {
+        this.lastUpdate = { url: currentUrl, title: currentTitle, timestamp: Date.now() };
+        return true;
+      }
+
+      // Check if content has changed significantly (sample check)
+      const contentSample = document.body ? document.body.innerText.substring(0, 1000) : '';
+      if (this.lastUpdate && this.lastUpdate.contentSample !== contentSample) {
+        this.lastUpdate.contentSample = contentSample;
+        return true;
+      }
+
+      return false;
+    } catch (error) {
+      console.warn('Error checking page changes:', error);
+      return false;
     }
   }
 
   checkNFLUpdates() {
     try {
-      console.log('UnderstandThisGame: Starting NFL check...');
+      console.log('PlaySense: Starting NFL check...');
 
       // Multiple selectors to find game data containers
       const gameContainers = [
@@ -803,7 +1240,7 @@ class UnderstandThisGame {
 
   checkMLBUpdates() {
     try {
-      console.log('UnderstandThisGame: Starting MLB check...');
+      console.log('PlaySense: Starting MLB check...');
 
       // Multiple selectors to find MLB game data
       const gameContainers = [
@@ -1070,7 +1507,7 @@ class UnderstandThisGame {
 
   checkF1Updates() {
     try {
-      console.log('UnderstandThisGame: Starting F1 check...');
+      console.log('PlaySense: Starting F1 check...');
 
       // Multiple selectors to find F1 race data
       const raceContainers = [
@@ -1419,21 +1856,81 @@ class UnderstandThisGame {
   }
 
   addEvent(type, description) {
-    const event = {
-      timestamp: new Date().toLocaleTimeString(),
-      type: type,
-      description: description
-    };
+    try {
+      // Validate and sanitize inputs
+      const sanitizedType = this.sanitizeString(type, 'Event Type');
+      const sanitizedDescription = this.sanitizeString(description, 'Event Description');
 
-    this.eventLog.push(event);
+      if (!sanitizedType || !sanitizedDescription) {
+        console.warn('Invalid event data, skipping:', { type, description });
+        return;
+      }
 
-    // Keep only last 20 events
-    if (this.eventLog.length > 20) {
-      this.eventLog = this.eventLog.slice(-20);
+      const event = {
+        timestamp: new Date().toLocaleTimeString(),
+        type: sanitizedType,
+        description: sanitizedDescription,
+        id: this.generateEventId()
+      };
+
+      // Check for duplicate events (prevent spam)
+      if (this.isDuplicateEvent(event)) {
+        console.log('Duplicate event detected, skipping:', event);
+        return;
+      }
+
+      this.eventLog.push(event);
+
+      // Keep only last 50 events (increased from 20)
+      if (this.eventLog.length > 50) {
+        this.eventLog = this.eventLog.slice(-50);
+      }
+
+      this.updateOverlay(sanitizedDescription);
+      this.updateLog();
+
+      // Log successful event addition
+      console.log('Event added:', event);
+    } catch (error) {
+      this.handleError('AddEvent', error);
+    }
+  }
+
+  sanitizeString(input, fieldName) {
+    if (!input || typeof input !== 'string') {
+      console.warn(`Invalid ${fieldName}:`, input);
+      return null;
     }
 
-    this.updateOverlay(description);
-    this.updateLog();
+    // Remove potentially dangerous content
+    let sanitized = input
+      .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '') // Remove script tags
+      .replace(/<[^>]*>/g, '') // Remove HTML tags
+      .replace(/javascript:/gi, '') // Remove javascript: protocols
+      .replace(/on\w+\s*=/gi, '') // Remove event handlers
+      .trim();
+
+    // Limit length
+    if (sanitized.length > 500) {
+      sanitized = sanitized.substring(0, 500) + '...';
+    }
+
+    return sanitized || null;
+  }
+
+  generateEventId() {
+    return Date.now().toString(36) + Math.random().toString(36).substr(2);
+  }
+
+  isDuplicateEvent(newEvent) {
+    if (this.eventLog.length === 0) return false;
+
+    const recentEvents = this.eventLog.slice(-5); // Check last 5 events
+    return recentEvents.some(event =>
+      event.type === newEvent.type &&
+      event.description === newEvent.description &&
+      (Date.now() - parseInt(event.id, 36)) < 5000 // Within 5 seconds
+    );
   }
 
   updateOverlay(message) {
@@ -1470,18 +1967,57 @@ class UnderstandThisGame {
   }
 }
 
-// Initialize when page loads
-console.log('UnderstandThisGame: Content script loaded');
+// Initialize when page loads with enhanced error handling
+console.log('PlaySense: Content script loaded');
 console.log('Current URL:', window.location.href);
 console.log('Document ready state:', document.readyState);
 
+// Global error handler for uncaught errors
+window.addEventListener('error', (event) => {
+  console.error('Global error caught:', event.error);
+  if (window.PlaySenseInstance) {
+    window.PlaySenseInstance.handleError('GlobalError', event.error);
+  }
+});
+
+// Global unhandled promise rejection handler
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('Unhandled promise rejection:', event.reason);
+  if (window.PlaySenseInstance) {
+    window.PlaySenseInstance.handleError('UnhandledRejection', event.reason);
+  }
+});
+
+function initializeExtension() {
+  try {
+    console.log('PlaySense: Initializing extension...');
+    window.PlaySenseInstance = new PlaySense();
+    console.log('PlaySense: Extension initialized successfully');
+  } catch (error) {
+    console.error('PlaySense: Failed to initialize:', error);
+
+    // Retry initialization after a delay (only once)
+    if (!window.PlaySenseRetryAttempted) {
+      window.PlaySenseRetryAttempted = true;
+      setTimeout(() => {
+        try {
+          console.log('PlaySense: Retrying initialization...');
+          window.PlaySenseInstance = new PlaySense();
+        } catch (retryError) {
+          console.error('PlaySense: Retry failed:', retryError);
+        }
+      }, 2000);
+    }
+  }
+}
+
 if (document.readyState === 'loading') {
-  console.log('UnderstandThisGame: Waiting for DOMContentLoaded');
+  console.log('PlaySense: Waiting for DOMContentLoaded');
   document.addEventListener('DOMContentLoaded', () => {
-    console.log('UnderstandThisGame: DOMContentLoaded fired, initializing...');
-    new UnderstandThisGame();
+    console.log('PlaySense: DOMContentLoaded fired, initializing...');
+    initializeExtension();
   });
 } else {
-  console.log('UnderstandThisGame: DOM already loaded, initializing immediately...');
-  new UnderstandThisGame();
+  console.log('PlaySense: DOM already loaded, initializing immediately...');
+  initializeExtension();
 }

@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "UnderstandThisGame",
+  "name": "PlaySense",
   "version": "1.0",
   "description": "Explains live sports events in simple terms for beginners",
   "permissions": [
@@ -33,7 +33,7 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "UnderstandThisGame"
+    "default_title": "PlaySense"
   }
   
 }

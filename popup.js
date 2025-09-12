@@ -1,4 +1,4 @@
-// Popup script for UnderstandThisGame extension
+// Popup script for PlaySense extension
 document.addEventListener('DOMContentLoaded', function () {
   const toggleBtn = document.getElementById('toggleBtn');
   const statusIndicator = document.getElementById('statusIndicator');
