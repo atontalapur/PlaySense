@@ -67,25 +67,27 @@
   gap: 8px;
   position: relative;
   z-index: 1;
+  pointer-events: auto !important;
 }
 
 #understand-game-header button {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: white;
-  font-size: 13px;
-  font-weight: 500;
-  cursor: pointer;
-  padding: 6px 8px;
+  font-size: 14px;
+  cursor: pointer !important;
+  padding: 4px 6px;
   margin: 0;
   width: 28px;
   height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 8px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  backdrop-filter: blur(10px);
+  border-radius: 3px;
+  transition: background-color 0.2s;
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 1000;
 }
 
 #understand-game-header button:hover {
@@ -101,13 +103,20 @@
 }
 
 #understand-game-close {
-  color: #f87171 !important;
-  font-weight: 600;
+  color: #ff6b6b !important;
+  font-weight: bold !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  user-select: none !important;
 }
 
 #understand-game-close:hover {
-  background: rgba(248, 113, 113, 0.2) !important;
-  border-color: rgba(248, 113, 113, 0.3) !important;
+  background: rgba(255, 107, 107, 0.2) !important;
+  transform: scale(1.1) !important;
+}
+
+#understand-game-close:active {
+  transform: scale(0.95) !important;
 }
 
 #understand-game-content {
