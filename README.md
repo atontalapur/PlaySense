@@ -89,7 +89,6 @@ A seamless, unobtrusive overlay that appears on ESPN pages, instantly explaining
 - **Platform expansion** to other streaming services
 - **Mobile app** development potential
 
-## 💻 Installation & Usage
 
 ### For End Users
 1. Download extension files
@@ -98,13 +97,6 @@ A seamless, unobtrusive overlay that appears on ESPN pages, instantly explaining
 4. Navigate to any ESPN game page
 5. Click extension icon and start monitoring
 6. Enjoy real-time game explanations!
-
-### For Developers
-```bash
-git clone [repository-url]
-cd PlaySense
-# Load in Chrome as unpacked extension
-```
 
 ### System Requirements
 - **Chrome browser** version 88+
