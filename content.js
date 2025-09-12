@@ -58,40 +58,80 @@ class UnderstandThisGame {
 
     this.overlay = document.createElement('div');
     this.overlay.id = 'understand-game-overlay';
-    this.overlay.innerHTML = `
-      <div id="understand-game-header">
-        <span>UnderstandThisGame</span>
-        <div class="header-buttons">
-          <button id="understand-game-toggle-log">📋</button>
-          <button id="understand-game-minimize">−</button>
-          <button id="understand-game-close">✕</button>
-        </div>
-      </div>
-      <div id="understand-game-content">
-        <div id="understand-game-current">Extension loaded! Click the extension icon to start.</div>
-        <div id="understand-game-log" style="display: none;"></div>
-      </div>
-    `;
+
+    // Create elements manually instead of innerHTML for better event handling
+    const header = document.createElement('div');
+    header.id = 'understand-game-header';
+
+    const title = document.createElement('span');
+    title.textContent = 'UnderstandThisGame';
+
+    const buttonContainer = document.createElement('div');
+    buttonContainer.className = 'header-buttons';
+
+    // Create toggle log button
+    const toggleBtn = document.createElement('button');
+    toggleBtn.id = 'understand-game-toggle-log';
+    toggleBtn.textContent = '📋';
+    toggleBtn.onclick = () => {
+      console.log('Toggle button clicked');
+      this.toggleLog();
+    };
+
+    // Create minimize button
+    const minimizeBtn = document.createElement('button');
+    minimizeBtn.id = 'understand-game-minimize';
+    minimizeBtn.textContent = '−';
+    minimizeBtn.onclick = () => {
+      console.log('Minimize button clicked');
+      this.overlay.classList.toggle('minimized');
+    };
+
+    // Create close button
+    const closeBtn = document.createElement('button');
+    closeBtn.id = 'understand-game-close';
+    closeBtn.textContent = '✕';
+    closeBtn.onclick = () => {
+      console.log('Close button clicked');
+      this.hideOverlay();
+    };
+
+    buttonContainer.appendChild(toggleBtn);
+    buttonContainer.appendChild(minimizeBtn);
+    buttonContainer.appendChild(closeBtn);
+
+    header.appendChild(title);
+    header.appendChild(buttonContainer);
+
+    // Create content area
+    const content = document.createElement('div');
+    content.id = 'understand-game-content';
+
+    const current = document.createElement('div');
+    current.id = 'understand-game-current';
+    current.textContent = 'Extension loaded! Click the extension icon to start.';
+
+    const log = document.createElement('div');
+    log.id = 'understand-game-log';
+    log.style.display = 'none';
+
+    content.appendChild(current);
+    content.appendChild(log);
+
+    this.overlay.appendChild(header);
+    this.overlay.appendChild(content);
 
     // Make sure overlay is visible
     this.overlay.style.display = 'block';
     this.overlay.style.visibility = 'visible';
     this.overlay.style.opacity = '1';
 
-    // Make header draggable
-    this.makeDraggable();
-
     // Append to body and log for debugging
     document.body.appendChild(this.overlay);
     console.log('UnderstandThisGame: Overlay created and added to page');
 
-    // Add event listeners with a small delay to ensure elements are rendered
-    setTimeout(() => {
-      this.addOverlayEventListeners();
-    }, 100);
-
-    // Also add event delegation as a fallback
-    this.addEventDelegation();
+    // Make header draggable
+    this.makeDraggable();
 
     // Test if overlay is actually visible
     setTimeout(() => {
@@ -102,100 +142,7 @@ class UnderstandThisGame {
       } else {
         console.error('UnderstandThisGame: Overlay not found after creation!');
       }
-    }, 1000);
-  }
-
-  addOverlayEventListeners() {
-    try {
-      console.log('Adding overlay event listeners...');
-
-      // Toggle log button
-      const toggleLogBtn = document.getElementById('understand-game-toggle-log');
-      if (toggleLogBtn) {
-        toggleLogBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          console.log('Toggle log button clicked');
-          this.toggleLog();
-        });
-        console.log('Toggle log button listener added');
-      } else {
-        console.error('Toggle log button not found');
-      }
-
-      // Minimize button
-      const minimizeBtn = document.getElementById('understand-game-minimize');
-      if (minimizeBtn) {
-        minimizeBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          console.log('Minimize button clicked');
-          this.overlay.classList.toggle('minimized');
-        });
-        console.log('Minimize button listener added');
-      } else {
-        console.error('Minimize button not found');
-      }
-
-      // Close button
-      const closeBtn = document.getElementById('understand-game-close');
-      if (closeBtn) {
-        closeBtn.addEventListener('click', (e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          console.log('Close button clicked');
-          this.hideOverlay();
-        });
-        console.log('Close button listener added');
-      } else {
-        console.error('Close button not found');
-      }
-
-      console.log('All overlay event listeners added successfully');
-    } catch (error) {
-      console.error('Error adding overlay event listeners:', error);
-    }
-  }
-
-  addEventDelegation() {
-    // Use event delegation as a fallback for button clicks
-    document.addEventListener('click', (e) => {
-      // Only handle clicks within our overlay
-      if (!this.overlay || !this.overlay.contains(e.target)) {
-        return;
-      }
-
-      const target = e.target;
-
-      // Handle close button
-      if (target.id === 'understand-game-close') {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log('Close button clicked (via delegation)');
-        this.hideOverlay();
-        return;
-      }
-
-      // Handle minimize button
-      if (target.id === 'understand-game-minimize') {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log('Minimize button clicked (via delegation)');
-        this.overlay.classList.toggle('minimized');
-        return;
-      }
-
-      // Handle toggle log button
-      if (target.id === 'understand-game-toggle-log') {
-        e.preventDefault();
-        e.stopPropagation();
-        console.log('Toggle log button clicked (via delegation)');
-        this.toggleLog();
-        return;
-      }
-    });
-
-    console.log('Event delegation added as fallback');
+    }, 100);
   }
 
   makeDraggable() {
@@ -271,8 +218,14 @@ class UnderstandThisGame {
   }
 
   hideOverlay() {
+    console.log('hideOverlay() called');
     if (this.overlay) {
-      console.log('Hiding overlay');
+      console.log('Overlay exists, hiding...');
+      console.log('Current overlay styles:', {
+        display: this.overlay.style.display,
+        visibility: this.overlay.style.visibility,
+        opacity: this.overlay.style.opacity
+      });
 
       // Add a fade-out animation
       this.overlay.style.transition = 'opacity 0.3s ease-out';
@@ -280,9 +233,11 @@ class UnderstandThisGame {
 
       // Hide after animation completes
       setTimeout(() => {
-        this.overlay.style.display = 'none';
-        this.overlay.style.visibility = 'hidden';
-        console.log('Overlay hidden successfully');
+        if (this.overlay) {
+          this.overlay.style.display = 'none';
+          this.overlay.style.visibility = 'hidden';
+          console.log('Overlay hidden successfully');
+        }
       }, 300);
 
       // Also stop monitoring when hiding

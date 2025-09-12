@@ -44,6 +44,7 @@
 .header-buttons {
   display: flex;
   gap: 5px;
+  pointer-events: auto !important;
 }
 
 #understand-game-header button {
@@ -51,7 +52,7 @@
   border: none;
   color: white;
   font-size: 14px;
-  cursor: pointer;
+  cursor: pointer !important;
   padding: 4px 6px;
   margin: 0;
   width: 24px;
@@ -61,6 +62,9 @@
   justify-content: center;
   border-radius: 3px;
   transition: background-color 0.2s;
+  pointer-events: auto !important;
+  position: relative;
+  z-index: 1000;
 }
 
 #understand-game-header button:hover {
@@ -69,11 +73,19 @@
 
 #understand-game-close {
   color: #ff6b6b !important;
-  font-weight: bold;
+  font-weight: bold !important;
+  cursor: pointer !important;
+  pointer-events: auto !important;
+  user-select: none !important;
 }
 
 #understand-game-close:hover {
   background: rgba(255, 107, 107, 0.2) !important;
+  transform: scale(1.1) !important;
+}
+
+#understand-game-close:active {
+  transform: scale(0.95) !important;
 }
 
 #understand-game-content {
