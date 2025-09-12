@@ -1,6 +1,6 @@
 # PlaySense Chrome Extension
 
-![Logo](logo.png)
+![Logo](assets/logo.png)
 
 
 **Making Sports Accessible to Everyone**
