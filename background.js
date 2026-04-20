@@ -5,6 +5,6 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === 'log_event') {
     // Event relay placeholder — reserved for future persistence
+    sendResponse({});
   }
-  return true;
 });

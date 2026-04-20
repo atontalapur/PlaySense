@@ -274,15 +274,6 @@ class PlaySense {
     // Make header draggable
     this.makeDraggable();
 
-    // Test if overlay is actually visible
-    setTimeout(() => {
-      const overlayCheck = document.getElementById('playsense-overlay');
-      if (overlayCheck) {
-
-      } else {
-        console.error('PlaySense: Overlay not found after creation!');
-      }
-    }, 100);
   }
 
   makeDraggable() {
@@ -460,7 +451,7 @@ class PlaySense {
       const urlObj = new URL(url);
       return urlObj.href;
     } catch (error) {
-      console.warn('Invalid URL:', url);
+      console.warn('PlaySense: Invalid URL provided');
       return null;
     }
   }
@@ -690,13 +681,12 @@ class PlaySense {
       const f1UrlPatterns = [
         { pattern: '/f1/', weight: 15, exact: false },
         { pattern: 'f1.com', weight: 15, exact: false },
-        { pattern: 'formula1.com', weight: 15, exact: false },
+        { pattern: 'formula1.com', weight: 18, exact: false },
         { pattern: 'f1-live', weight: 12, exact: false },
         { pattern: 'formula-1-live', weight: 12, exact: false },
         { pattern: '/formula-1/', weight: 12, exact: false },
         { pattern: '/formula1/', weight: 12, exact: false },
-        { pattern: 'espn.com/f1', weight: 20, exact: false },
-        { pattern: 'formula1.com', weight: 18, exact: false }
+        { pattern: 'espn.com/f1', weight: 20, exact: false }
       ];
 
       f1UrlPatterns.forEach(({ pattern, weight, exact }) => {
@@ -1837,7 +1827,7 @@ class PlaySense {
         timestamp: new Date().toLocaleTimeString(),
         type: sanitizedType,
         description: sanitizedDescription,
-        id: this.generateEventId()
+        createdAt: Date.now()
       };
 
       // Check for duplicate events (prevent spam)
@@ -1865,7 +1855,7 @@ class PlaySense {
 
   sanitizeString(input, fieldName) {
     if (!input || typeof input !== 'string') {
-      console.warn(`Invalid ${fieldName}:`, input);
+      console.warn(`PlaySense: Invalid ${fieldName} — expected non-empty string`);
       return null;
     }
 
@@ -1885,18 +1875,14 @@ class PlaySense {
     return sanitized || null;
   }
 
-  generateEventId() {
-    return Date.now().toString(36) + Math.random().toString(36).substr(2);
-  }
-
   isDuplicateEvent(newEvent) {
     if (this.eventLog.length === 0) return false;
 
-    const recentEvents = this.eventLog.slice(-5); // Check last 5 events
+    const recentEvents = this.eventLog.slice(-5);
     return recentEvents.some(event =>
       event.type === newEvent.type &&
       event.description === newEvent.description &&
-      (Date.now() - parseInt(event.id, 36)) < 5000 // Within 5 seconds
+      (Date.now() - event.createdAt) < 5000
     );
   }
 

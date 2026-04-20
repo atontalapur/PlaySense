@@ -25,13 +25,21 @@ document.addEventListener('DOMContentLoaded', function () {
 
   showOverlayBtn.addEventListener('click', function () {
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, { action: 'showOverlay' });
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'showOverlay' }, function () {
+        if (chrome.runtime.lastError) {
+          console.error('PlaySense: showOverlay failed —', chrome.runtime.lastError.message);
+        }
+      });
     });
   });
 
   hideOverlayBtn.addEventListener('click', function () {
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
-      chrome.tabs.sendMessage(tabs[0].id, { action: 'hideOverlay' });
+      chrome.tabs.sendMessage(tabs[0].id, { action: 'hideOverlay' }, function () {
+        if (chrome.runtime.lastError) {
+          console.error('PlaySense: hideOverlay failed —', chrome.runtime.lastError.message);
+        }
+      });
     });
   });
 
@@ -43,12 +51,16 @@ document.addEventListener('DOMContentLoaded', function () {
       const espnLink = document.getElementById('espnLink');
       if (!isSupportedPage) {
         if (espnLink) espnLink.style.display = 'inline';
+        toggleBtn.disabled = true;
+        toggleBtn.style.opacity = '0.4';
         showOverlayBtn.disabled = true;
         showOverlayBtn.style.opacity = '0.4';
         hideOverlayBtn.disabled = true;
         hideOverlayBtn.style.opacity = '0.4';
       } else {
         if (espnLink) espnLink.style.display = 'none';
+        toggleBtn.disabled = false;
+        toggleBtn.style.opacity = '1';
         showOverlayBtn.disabled = false;
         showOverlayBtn.style.opacity = '1';
         hideOverlayBtn.disabled = false;
