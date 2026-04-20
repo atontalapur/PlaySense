@@ -311,15 +311,15 @@ class PlaySense {
 
       const msg = document.createElement('p');
       msg.textContent = 'PlaySense explains live sports events in plain English as they happen.';
-      msg.style.cssText = 'margin:0 0 8px 0; font-size:13px;';
+      msg.className = 'playsense-onboarding-msg';
 
       const sports = document.createElement('p');
       sports.textContent = 'Supported: NFL, MLB, Formula 1 on ESPN.';
-      sports.style.cssText = 'margin:0 0 12px 0; font-size:12px; opacity:0.8;';
+      sports.className = 'playsense-onboarding-sports';
 
       const btn = document.createElement('button');
       btn.textContent = 'Got it';
-      btn.style.cssText = 'background:#4f46e5; color:white; border:none; padding:6px 16px; border-radius:6px; cursor:pointer; font-size:12px;';
+      btn.className = 'playsense-onboarding-btn';
       btn.onclick = () => {
         chrome.storage.local.set({ hasSeenOnboarding: true }, () => {
           if (chrome.runtime.lastError) {
@@ -328,6 +328,7 @@ class PlaySense {
         });
         this.onboardingDismissed = true;
         currentEl.textContent = 'Click the extension icon to start monitoring.';
+        this.detectGameType();
       };
 
       currentEl.appendChild(msg);
@@ -1067,7 +1068,7 @@ class PlaySense {
       });
 
     } catch (error) {
-
+      this.handleError('checkNFLUpdates', error);
     }
   }
 
@@ -1115,7 +1116,7 @@ class PlaySense {
       this.checkNFLPlays(container, containerIndex);
 
     } catch (error) {
-
+      this.handleError('checkNFLContainer', error);
     }
   }
 
@@ -1191,7 +1192,7 @@ class PlaySense {
       }
 
     } catch (error) {
-
+      this.handleError('checkNFLPlays', error);
     }
   }
 
@@ -1262,7 +1263,7 @@ class PlaySense {
       }
 
     } catch (error) {
-
+      this.handleError('checkNFLUpdatesFallback', error);
     }
   }
 
@@ -1293,7 +1294,7 @@ class PlaySense {
       });
 
     } catch (error) {
-
+      this.handleError('checkMLBUpdates', error);
     }
   }
 
@@ -1330,7 +1331,7 @@ class PlaySense {
       this.checkMLBPlays(container, containerIndex);
 
     } catch (error) {
-
+      this.handleError('checkMLBContainer', error);
     }
   }
 
@@ -1369,7 +1370,7 @@ class PlaySense {
       }
 
     } catch (error) {
-
+      this.handleError('checkMLBScores', error);
     }
   }
 
@@ -1437,7 +1438,7 @@ class PlaySense {
       }
 
     } catch (error) {
-
+      this.handleError('checkMLBPlays', error);
     }
   }
 
@@ -1540,7 +1541,7 @@ class PlaySense {
       }
 
     } catch (error) {
-
+      this.handleError('checkMLBUpdatesFallback', error);
     }
   }
 
@@ -1571,7 +1572,7 @@ class PlaySense {
       });
 
     } catch (error) {
-
+      this.handleError('checkF1Updates', error);
     }
   }
 
@@ -1587,7 +1588,7 @@ class PlaySense {
       this.checkF1Events(container, containerIndex);
 
     } catch (error) {
-
+      this.handleError('checkF1Container', error);
     }
   }
 
@@ -1645,7 +1646,7 @@ class PlaySense {
       }
 
     } catch (error) {
-
+      this.handleError('checkF1Positions', error);
     }
   }
 
@@ -1684,7 +1685,7 @@ class PlaySense {
       }
 
     } catch (error) {
-
+      this.handleError('checkF1LapTimes', error);
     }
   }
 

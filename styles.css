@@ -1,7 +1,5 @@
 /* PlaySense Extension Styles - Professional Theme */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
-
 #playsense-overlay {
   position: fixed !important;
   top: 20px !important;
@@ -302,4 +300,26 @@
   #playsense-overlay {
     background: linear-gradient(145deg, #0f0f23 0%, #1a1a2e 100%);
   }
+}
+
+/* Onboarding card elements */
+.playsense-onboarding-msg {
+  margin: 0 0 8px 0;
+  font-size: 13px;
+}
+
+.playsense-onboarding-sports {
+  margin: 0 0 12px 0;
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.playsense-onboarding-btn {
+  background: #4f46e5;
+  color: white;
+  border: none;
+  padding: 6px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
 }
