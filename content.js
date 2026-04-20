@@ -2,7 +2,7 @@
 class PlaySense {
   constructor() {
     try {
-      console.log('PlaySense: Constructor called');
+
       this.isActive = false;
       this.gameType = null;
       this.lastUpdate = null;
@@ -23,9 +23,8 @@ class PlaySense {
         errorRate: 0
       };
 
-      console.log('PlaySense: Initializing...');
       this.init();
-      console.log('PlaySense: Initialization complete');
+
     } catch (error) {
       console.error('PlaySense: Constructor error:', error);
       this.handleError('Constructor', error);
@@ -42,7 +41,7 @@ class PlaySense {
           this.handleError('InitRetryLimit', new Error('Max initialization retries reached'));
           return;
         }
-        console.log(`Environment not ready, waiting... (retry ${this.initRetryCount}/${this.maxInitRetries})`);
+
         setTimeout(() => {
           this.init();
         }, 1000);
@@ -60,7 +59,7 @@ class PlaySense {
 
           // If game type changed, log it
           if (previousGameType !== this.gameType) {
-            console.log(`Game type changed from ${previousGameType} to ${this.gameType}`);
+
             this.addEvent('System', `Game type changed to ${this.gameType ? this.gameType.toUpperCase() : 'Unknown'}`);
           }
         } catch (error) {
@@ -171,15 +170,14 @@ class PlaySense {
     // Return error info for debugging
     return {
       context,
-      message: error.message || error,
-      stack: error.stack,
+      message: error.message || String(error),
       timestamp: new Date().toISOString()
     };
   }
 
   reset() {
     try {
-      console.log('Resetting extension...');
+
       this.stopMonitoring();
       this.cleanup();
       this.errorCount = 0;
@@ -195,48 +193,48 @@ class PlaySense {
 
   createOverlay() {
     // Remove any existing overlay first
-    const existingOverlay = document.getElementById('understand-game-overlay');
+    const existingOverlay = document.getElementById('playsense-overlay');
     if (existingOverlay) {
       existingOverlay.remove();
     }
 
     this.overlay = document.createElement('div');
-    this.overlay.id = 'understand-game-overlay';
+    this.overlay.id = 'playsense-overlay';
 
     // Create elements manually instead of innerHTML for better event handling
     const header = document.createElement('div');
-    header.id = 'understand-game-header';
+    header.id = 'playsense-header';
 
     const title = document.createElement('span');
-    title.textContent = 'UnderstandThisGame';
+    title.textContent = 'PlaySense';
 
     const buttonContainer = document.createElement('div');
     buttonContainer.className = 'header-buttons';
 
     // Create toggle log button
     const toggleBtn = document.createElement('button');
-    toggleBtn.id = 'understand-game-toggle-log';
+    toggleBtn.id = 'playsense-toggle-log';
     toggleBtn.textContent = '📋';
     toggleBtn.onclick = () => {
-      console.log('Toggle button clicked');
+
       this.toggleLog();
     };
 
     // Create minimize button
     const minimizeBtn = document.createElement('button');
-    minimizeBtn.id = 'understand-game-minimize';
+    minimizeBtn.id = 'playsense-minimize';
     minimizeBtn.textContent = '−';
     minimizeBtn.onclick = () => {
-      console.log('Minimize button clicked');
+
       this.overlay.classList.toggle('minimized');
     };
 
     // Create close button
     const closeBtn = document.createElement('button');
-    closeBtn.id = 'understand-game-close';
+    closeBtn.id = 'playsense-close';
     closeBtn.textContent = '✕';
     closeBtn.onclick = () => {
-      console.log('Close button clicked');
+
       this.hideOverlay();
     };
 
@@ -249,14 +247,14 @@ class PlaySense {
 
     // Create content area
     const content = document.createElement('div');
-    content.id = 'understand-game-content';
+    content.id = 'playsense-content';
 
     const current = document.createElement('div');
-    current.id = 'understand-game-current';
+    current.id = 'playsense-current';
     current.textContent = 'Extension loaded! Click the extension icon to start.';
 
     const log = document.createElement('div');
-    log.id = 'understand-game-log';
+    log.id = 'playsense-log';
     log.style.display = 'none';
 
     content.appendChild(current);
@@ -272,17 +270,15 @@ class PlaySense {
 
     // Append to body and log for debugging
     document.body.appendChild(this.overlay);
-    console.log('PlaySense: Overlay created and added to page');
 
     // Make header draggable
     this.makeDraggable();
 
     // Test if overlay is actually visible
     setTimeout(() => {
-      const overlayCheck = document.getElementById('understand-game-overlay');
+      const overlayCheck = document.getElementById('playsense-overlay');
       if (overlayCheck) {
-        console.log('PlaySense: Overlay confirmed on page');
-        console.log('Overlay position:', overlayCheck.getBoundingClientRect());
+
       } else {
         console.error('PlaySense: Overlay not found after creation!');
       }
@@ -290,7 +286,7 @@ class PlaySense {
   }
 
   makeDraggable() {
-    const header = this.overlay.querySelector('#understand-game-header');
+    const header = this.overlay.querySelector('#playsense-header');
     if (!header) {
       console.error('Header not found for dragging');
       return;
@@ -350,26 +346,20 @@ class PlaySense {
 
   showOverlay() {
     if (this.overlay) {
-      console.log('Showing existing overlay');
+
       this.overlay.style.display = 'block';
       this.overlay.style.visibility = 'visible';
       this.overlay.style.opacity = '1';
       this.overlay.style.transition = 'opacity 0.3s ease-in';
     } else {
-      console.log('Creating new overlay');
+
       this.createOverlay();
     }
   }
 
   hideOverlay() {
-    console.log('hideOverlay() called');
+
     if (this.overlay) {
-      console.log('Overlay exists, hiding...');
-      console.log('Current overlay styles:', {
-        display: this.overlay.style.display,
-        visibility: this.overlay.style.visibility,
-        opacity: this.overlay.style.opacity
-      });
 
       // Add a fade-out animation
       this.overlay.style.transition = 'opacity 0.3s ease-out';
@@ -380,7 +370,7 @@ class PlaySense {
         if (this.overlay) {
           this.overlay.style.display = 'none';
           this.overlay.style.visibility = 'hidden';
-          console.log('Overlay hidden successfully');
+
         }
       }, 300);
 
@@ -388,10 +378,10 @@ class PlaySense {
       if (this.isActive) {
         this.stopMonitoring();
         this.isActive = false;
-        console.log('Monitoring stopped due to overlay hide');
+
       }
     } else {
-      console.log('No overlay to hide');
+
     }
   }
 
@@ -448,11 +438,6 @@ class PlaySense {
 
       // Performance tracking
       this.performanceMetrics.detectionTime = performance.now() - startTime;
-
-      console.log('Game detection scores:', gameScores);
-      console.log('Detected game type:', this.gameType);
-      console.log('Detection threshold:', minThreshold);
-      console.log('Detection time:', this.performanceMetrics.detectionTime + 'ms');
 
       this.updateOverlay(`Detected: ${this.gameType ? this.gameType.toUpperCase() : 'No supported game'}`);
 
@@ -853,7 +838,6 @@ class PlaySense {
   // Clean up all intervals when extension is disabled
   cleanup() {
     try {
-      console.log('Cleaning up extension...');
 
       // Clear all intervals
       if (this.checkInterval) {
@@ -881,7 +865,6 @@ class PlaySense {
       this.isActive = false;
       this.isInitialized = false;
 
-      console.log('Extension cleanup complete');
     } catch (error) {
       console.error('Error during cleanup:', error);
     }
@@ -890,7 +873,7 @@ class PlaySense {
   // Enhanced initialization with better error recovery
   reinitialize() {
     try {
-      console.log('Reinitializing extension...');
+
       this.cleanup();
 
       // Wait a bit before reinitializing
@@ -921,17 +904,13 @@ class PlaySense {
       }
 
       // Log what we're checking for debugging
-      console.log(`PlaySense: Checking for ${this.gameType} updates...`);
-      console.log(`Page URL: ${window.location.href}`);
-      console.log(`Page title: ${document.title}`);
 
       // Count total elements on page for debugging (with performance limit)
       const totalElements = this.getPageElementCount();
-      console.log(`Total elements on page: ${totalElements}`);
 
       // Check if page has changed significantly
       if (this.hasPageChanged()) {
-        console.log('Page content changed significantly, re-detecting game type');
+
         this.detectGameType();
       }
 
@@ -1010,7 +989,6 @@ class PlaySense {
 
   checkNFLUpdates() {
     try {
-      console.log('PlaySense: Starting NFL check...');
 
       // Multiple selectors to find game data containers
       const gameContainers = [
@@ -1024,13 +1002,11 @@ class PlaySense {
       ].filter(Boolean);
 
       if (gameContainers.length === 0) {
-        console.log('No game containers found, trying broader search...');
+
         // Fallback: search the entire page for game-related content
         this.checkNFLUpdatesFallback();
         return;
       }
-
-      console.log(`Found ${gameContainers.length} game container(s)`);
 
       // Check each container for updates
       gameContainers.forEach((container, index) => {
@@ -1038,7 +1014,7 @@ class PlaySense {
       });
 
     } catch (error) {
-      console.log('Error checking NFL updates:', error);
+
     }
   }
 
@@ -1075,7 +1051,7 @@ class PlaySense {
         const currentScore = teamScores.slice(0, 2).join(' - ');
         const scoreKey = `score_${containerIndex}`;
         if (this.previousGameState[scoreKey] !== currentScore) {
-          console.log(`Score changed in container ${containerIndex}:`, currentScore);
+
           this.previousGameState[scoreKey] = currentScore;
           const teamInfo = teamNames.length >= 2 ? ` (${teamNames[0]} vs ${teamNames[1]})` : '';
           this.addEvent('Score Update', `Score: ${currentScore}${teamInfo}`);
@@ -1086,7 +1062,7 @@ class PlaySense {
       this.checkNFLPlays(container, containerIndex);
 
     } catch (error) {
-      console.log(`Error checking container ${containerIndex}:`, error);
+
     }
   }
 
@@ -1154,7 +1130,7 @@ class PlaySense {
         const playKey = `lastPlay_${containerIndex}`;
 
         if (this.previousGameState[playKey] !== latestPlay) {
-          console.log(`New play detected in container ${containerIndex}:`, latestPlay);
+
           this.previousGameState[playKey] = latestPlay;
           const explanation = this.explainNFLPlay(latestPlay);
           this.addEvent('NFL Play', explanation);
@@ -1162,7 +1138,7 @@ class PlaySense {
       }
 
     } catch (error) {
-      console.log(`Error checking plays in container ${containerIndex}:`, error);
+
     }
   }
 
@@ -1201,7 +1177,6 @@ class PlaySense {
 
   checkNFLUpdatesFallback() {
     try {
-      console.log('Using fallback NFL detection...');
 
       // Look for any elements that might contain game data
       const allElements = document.querySelectorAll('*');
@@ -1226,7 +1201,7 @@ class PlaySense {
       if (gameData.length > 0) {
         const latestPlay = gameData[0].text;
         if (this.previousGameState.fallbackPlay !== latestPlay) {
-          console.log('New play detected (fallback):', latestPlay);
+
           this.previousGameState.fallbackPlay = latestPlay;
           const explanation = this.explainNFLPlay(latestPlay);
           this.addEvent('NFL Play', explanation);
@@ -1234,13 +1209,12 @@ class PlaySense {
       }
 
     } catch (error) {
-      console.log('Error in fallback NFL check:', error);
+
     }
   }
 
   checkMLBUpdates() {
     try {
-      console.log('PlaySense: Starting MLB check...');
 
       // Multiple selectors to find MLB game data
       const gameContainers = [
@@ -1255,12 +1229,10 @@ class PlaySense {
       ].filter(Boolean);
 
       if (gameContainers.length === 0) {
-        console.log('No MLB containers found, trying broader search...');
+
         this.checkMLBUpdatesFallback();
         return;
       }
-
-      console.log(`Found ${gameContainers.length} MLB container(s)`);
 
       // Check each container for updates
       gameContainers.forEach((container, index) => {
@@ -1268,7 +1240,7 @@ class PlaySense {
       });
 
     } catch (error) {
-      console.log('Error checking MLB updates:', error);
+
     }
   }
 
@@ -1292,7 +1264,7 @@ class PlaySense {
         const currentInning = inningElement.textContent.trim();
         const inningKey = `inning_${containerIndex}`;
         if (this.previousGameState[inningKey] !== currentInning) {
-          console.log(`Inning changed in container ${containerIndex}:`, currentInning);
+
           this.previousGameState[inningKey] = currentInning;
           this.addEvent('MLB Inning', this.explainMLBInning(currentInning));
         }
@@ -1305,7 +1277,7 @@ class PlaySense {
       this.checkMLBPlays(container, containerIndex);
 
     } catch (error) {
-      console.log(`Error checking MLB container ${containerIndex}:`, error);
+
     }
   }
 
@@ -1335,7 +1307,7 @@ class PlaySense {
 
       const scoreKey = `totalRuns_${containerIndex}`;
       if (this.previousGameState[scoreKey] !== totalRuns && totalRuns > 0) {
-        console.log(`Score changed in container ${containerIndex}:`, totalRuns);
+
         this.previousGameState[scoreKey] = totalRuns;
         const scoreText = teamScores.length >= 2 ?
           `Score: ${teamScores[0]} - ${teamScores[1]}` :
@@ -1344,7 +1316,7 @@ class PlaySense {
       }
 
     } catch (error) {
-      console.log(`Error checking MLB scores in container ${containerIndex}:`, error);
+
     }
   }
 
@@ -1404,7 +1376,7 @@ class PlaySense {
         const playKey = `lastPlay_${containerIndex}`;
 
         if (this.previousGameState[playKey] !== latestPlay) {
-          console.log(`New MLB play detected in container ${containerIndex}:`, latestPlay);
+
           this.previousGameState[playKey] = latestPlay;
           const explanation = this.explainMLBPlay(latestPlay);
           this.addEvent('MLB Play', explanation);
@@ -1412,7 +1384,7 @@ class PlaySense {
       }
 
     } catch (error) {
-      console.log(`Error checking MLB plays in container ${containerIndex}:`, error);
+
     }
   }
 
@@ -1471,7 +1443,6 @@ class PlaySense {
 
   checkMLBUpdatesFallback() {
     try {
-      console.log('Using fallback MLB detection...');
 
       const allElements = document.querySelectorAll('*');
       let gameData = [];
@@ -1493,7 +1464,7 @@ class PlaySense {
       if (gameData.length > 0) {
         const latestPlay = gameData[0].text;
         if (this.previousGameState.fallbackMLBPlay !== latestPlay) {
-          console.log('New MLB play detected (fallback):', latestPlay);
+
           this.previousGameState.fallbackMLBPlay = latestPlay;
           const explanation = this.explainMLBPlay(latestPlay);
           this.addEvent('MLB Play', explanation);
@@ -1501,13 +1472,12 @@ class PlaySense {
       }
 
     } catch (error) {
-      console.log('Error in fallback MLB check:', error);
+
     }
   }
 
   checkF1Updates() {
     try {
-      console.log('PlaySense: Starting F1 check...');
 
       // Multiple selectors to find F1 race data
       const raceContainers = [
@@ -1522,12 +1492,10 @@ class PlaySense {
       ].filter(Boolean);
 
       if (raceContainers.length === 0) {
-        console.log('No F1 containers found, trying broader search...');
+
         this.checkF1UpdatesFallback();
         return;
       }
-
-      console.log(`Found ${raceContainers.length} F1 container(s)`);
 
       // Check each container for updates
       raceContainers.forEach((container, index) => {
@@ -1535,7 +1503,7 @@ class PlaySense {
       });
 
     } catch (error) {
-      console.log('Error checking F1 updates:', error);
+
     }
   }
 
@@ -1551,7 +1519,7 @@ class PlaySense {
       this.checkF1Events(container, containerIndex);
 
     } catch (error) {
-      console.log(`Error checking F1 container ${containerIndex}:`, error);
+
     }
   }
 
@@ -1597,7 +1565,7 @@ class PlaySense {
       const positionKey = `positions_${containerIndex}`;
 
       if (this.previousGameState[positionKey] !== positionString && positionString) {
-        console.log(`Position changed in container ${containerIndex}:`, positionString);
+
         this.previousGameState[positionKey] = positionString;
 
         // Check for position changes
@@ -1609,7 +1577,7 @@ class PlaySense {
       }
 
     } catch (error) {
-      console.log(`Error checking F1 positions in container ${containerIndex}:`, error);
+
     }
   }
 
@@ -1641,14 +1609,14 @@ class PlaySense {
         const currentLapTimes = lapTimes.join('|');
 
         if (this.previousGameState[lapTimeKey] !== currentLapTimes) {
-          console.log(`Lap times updated in container ${containerIndex}:`, currentLapTimes);
+
           this.previousGameState[lapTimeKey] = currentLapTimes;
           this.addEvent('F1 Lap Time', `New lap times: ${lapTimes.slice(0, 3).join(', ')}`);
         }
       }
 
     } catch (error) {
-      console.log(`Error checking F1 lap times in container ${containerIndex}:`, error);
+
     }
   }
 
@@ -1708,7 +1676,7 @@ class PlaySense {
         const eventKey = `lastEvent_${containerIndex}`;
 
         if (this.previousGameState[eventKey] !== latestEvent) {
-          console.log(`New F1 event detected in container ${containerIndex}:`, latestEvent);
+
           this.previousGameState[eventKey] = latestEvent;
           const explanation = this.explainF1Event(latestEvent);
           this.addEvent('F1 Event', explanation);
@@ -1716,7 +1684,7 @@ class PlaySense {
       }
 
     } catch (error) {
-      console.log(`Error checking F1 events in container ${containerIndex}:`, error);
+
     }
   }
 
@@ -1778,7 +1746,6 @@ class PlaySense {
 
   checkF1UpdatesFallback() {
     try {
-      console.log('Using fallback F1 detection...');
 
       const allElements = document.querySelectorAll('*');
       let raceData = [];
@@ -1800,7 +1767,7 @@ class PlaySense {
       if (raceData.length > 0) {
         const latestEvent = raceData[0].text;
         if (this.previousGameState.fallbackF1Event !== latestEvent) {
-          console.log('New F1 event detected (fallback):', latestEvent);
+
           this.previousGameState.fallbackF1Event = latestEvent;
           const explanation = this.explainF1Event(latestEvent);
           this.addEvent('F1 Event', explanation);
@@ -1808,7 +1775,7 @@ class PlaySense {
       }
 
     } catch (error) {
-      console.log('Error in fallback F1 check:', error);
+
     }
   }
 
@@ -1875,7 +1842,7 @@ class PlaySense {
 
       // Check for duplicate events (prevent spam)
       if (this.isDuplicateEvent(event)) {
-        console.log('Duplicate event detected, skipping:', event);
+
         return;
       }
 
@@ -1890,7 +1857,7 @@ class PlaySense {
       this.updateLog();
 
       // Log successful event addition
-      console.log('Event added:', event);
+
     } catch (error) {
       this.handleError('AddEvent', error);
     }
@@ -1934,28 +1901,44 @@ class PlaySense {
   }
 
   updateOverlay(message) {
-    const content = document.getElementById('understand-game-current');
+    const content = document.getElementById('playsense-current');
     if (content) {
       content.textContent = message;
     }
   }
 
   updateLog() {
-    const logElement = document.getElementById('understand-game-log');
-    if (logElement) {
-      logElement.innerHTML = this.eventLog.map(event =>
-        `<div class="log-entry">
-          <span class="log-time">${event.timestamp}</span>
-          <span class="log-type">[${event.type}]</span>
-          <span class="log-desc">${event.description}</span>
-        </div>`
-      ).reverse().join('');
-    }
+    const logElement = document.getElementById('playsense-log');
+    if (!logElement) return;
+
+    logElement.textContent = '';
+    const reversed = [...this.eventLog].reverse();
+    reversed.forEach(event => {
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+
+      const time = document.createElement('span');
+      time.className = 'log-time';
+      time.textContent = event.timestamp;
+
+      const type = document.createElement('span');
+      type.className = 'log-type';
+      type.textContent = `[${event.type}]`;
+
+      const desc = document.createElement('span');
+      desc.className = 'log-desc';
+      desc.textContent = event.description;
+
+      entry.appendChild(time);
+      entry.appendChild(type);
+      entry.appendChild(desc);
+      logElement.appendChild(entry);
+    });
   }
 
   toggleLog() {
-    const logElement = document.getElementById('understand-game-log');
-    const currentElement = document.getElementById('understand-game-current');
+    const logElement = document.getElementById('playsense-log');
+    const currentElement = document.getElementById('playsense-current');
 
     if (logElement.style.display === 'none') {
       logElement.style.display = 'block';
@@ -1968,9 +1951,6 @@ class PlaySense {
 }
 
 // Initialize when page loads with enhanced error handling
-console.log('PlaySense: Content script loaded');
-console.log('Current URL:', window.location.href);
-console.log('Document ready state:', document.readyState);
 
 // Global error handler for uncaught errors
 window.addEventListener('error', (event) => {
@@ -1990,9 +1970,9 @@ window.addEventListener('unhandledrejection', (event) => {
 
 function initializeExtension() {
   try {
-    console.log('PlaySense: Initializing extension...');
+
     window.PlaySenseInstance = new PlaySense();
-    console.log('PlaySense: Extension initialized successfully');
+
   } catch (error) {
     console.error('PlaySense: Failed to initialize:', error);
 
@@ -2001,7 +1981,7 @@ function initializeExtension() {
       window.PlaySenseRetryAttempted = true;
       setTimeout(() => {
         try {
-          console.log('PlaySense: Retrying initialization...');
+
           window.PlaySenseInstance = new PlaySense();
         } catch (retryError) {
           console.error('PlaySense: Retry failed:', retryError);
@@ -2012,12 +1992,12 @@ function initializeExtension() {
 }
 
 if (document.readyState === 'loading') {
-  console.log('PlaySense: Waiting for DOMContentLoaded');
+
   document.addEventListener('DOMContentLoaded', () => {
-    console.log('PlaySense: DOMContentLoaded fired, initializing...');
+
     initializeExtension();
   });
 } else {
-  console.log('PlaySense: DOM already loaded, initializing immediately...');
+
   initializeExtension();
 }

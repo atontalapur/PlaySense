@@ -2,7 +2,7 @@
 
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
-#understand-game-overlay {
+#playsense-overlay {
   position: fixed !important;
   top: 20px !important;
   left: 20px !important;
@@ -27,12 +27,12 @@
   overflow: hidden !important;
 }
 
-#understand-game-overlay.minimized {
+#playsense-overlay.minimized {
   height: 48px;
   overflow: hidden;
 }
 
-#understand-game-header {
+#playsense-header {
   background: linear-gradient(135deg, #4f46e5 0%, #7c3aed 50%, #ec4899 100%);
   padding: 16px 20px;
   border-radius: 16px 16px 0 0;
@@ -47,7 +47,7 @@
   overflow: hidden;
 }
 
-#understand-game-header::before {
+#playsense-header::before {
   content: '';
   position: absolute;
   top: 0;
@@ -58,7 +58,7 @@
   pointer-events: none;
 }
 
-#understand-game-header:active {
+#playsense-header:active {
   cursor: grabbing;
 }
 
@@ -70,7 +70,7 @@
   pointer-events: auto !important;
 }
 
-#understand-game-header button {
+#playsense-header button {
   background: rgba(255, 255, 255, 0.1);
   border: 1px solid rgba(255, 255, 255, 0.2);
   color: white;
@@ -90,19 +90,19 @@
   z-index: 1000;
 }
 
-#understand-game-header button:hover {
+#playsense-header button:hover {
   background: rgba(255, 255, 255, 0.2);
   border-color: rgba(255, 255, 255, 0.3);
   transform: translateY(-1px);
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
 }
 
-#understand-game-header button:active {
+#playsense-header button:active {
   transform: translateY(0);
   box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
 }
 
-#understand-game-close {
+#playsense-close {
   color: #ff6b6b !important;
   font-weight: bold !important;
   cursor: pointer !important;
@@ -110,23 +110,23 @@
   user-select: none !important;
 }
 
-#understand-game-close:hover {
+#playsense-close:hover {
   background: rgba(255, 107, 107, 0.2) !important;
   transform: scale(1.1) !important;
 }
 
-#understand-game-close:active {
+#playsense-close:active {
   transform: scale(0.95) !important;
 }
 
-#understand-game-content {
+#playsense-content {
   padding: 20px;
   max-height: 320px;
   overflow-y: auto;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.02) 0%, rgba(255, 255, 255, 0.01) 100%);
 }
 
-#understand-game-current {
+#playsense-current {
   background: linear-gradient(135deg, rgba(79, 70, 229, 0.1) 0%, rgba(124, 58, 237, 0.05) 100%);
   padding: 16px;
   border-radius: 12px;
@@ -139,7 +139,7 @@
   backdrop-filter: blur(10px);
 }
 
-#understand-game-current::before {
+#playsense-current::before {
   content: '';
   position: absolute;
   top: 0;
@@ -151,7 +151,7 @@
   pointer-events: none;
 }
 
-#understand-game-log {
+#playsense-log {
   max-height: 280px;
   overflow-y: auto;
   margin-top: 8px;
@@ -208,26 +208,26 @@
 }
 
 /* Scrollbar styling for webkit browsers */
-#understand-game-log::-webkit-scrollbar,
-#understand-game-content::-webkit-scrollbar {
+#playsense-log::-webkit-scrollbar,
+#playsense-content::-webkit-scrollbar {
   width: 8px;
 }
 
-#understand-game-log::-webkit-scrollbar-track,
-#understand-game-content::-webkit-scrollbar-track {
+#playsense-log::-webkit-scrollbar-track,
+#playsense-content::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.05);
   border-radius: 4px;
 }
 
-#understand-game-log::-webkit-scrollbar-thumb,
-#understand-game-content::-webkit-scrollbar-thumb {
+#playsense-log::-webkit-scrollbar-thumb,
+#playsense-content::-webkit-scrollbar-thumb {
   background: linear-gradient(180deg, #4f46e5 0%, #7c3aed 100%);
   border-radius: 4px;
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-#understand-game-log::-webkit-scrollbar-thumb:hover,
-#understand-game-content::-webkit-scrollbar-thumb:hover {
+#playsense-log::-webkit-scrollbar-thumb:hover,
+#playsense-content::-webkit-scrollbar-thumb:hover {
   background: linear-gradient(180deg, #6366f1 0%, #8b5cf6 100%);
 }
 
@@ -258,37 +258,37 @@
   animation: slideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-#understand-game-current {
+#playsense-current {
   animation: fadeInUp 0.3s ease-out;
 }
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
-  #understand-game-overlay {
+  #playsense-overlay {
     width: 320px;
     left: 10px;
     top: 10px;
     border-radius: 12px;
   }
   
-  #understand-game-header {
+  #playsense-header {
     padding: 12px 16px;
     border-radius: 12px 12px 0 0;
   }
   
-  #understand-game-content {
+  #playsense-content {
     padding: 16px;
   }
 }
 
 /* High contrast mode support */
 @media (prefers-high-contrast: high) {
-  #understand-game-overlay {
+  #playsense-overlay {
     background: #000000;
     border: 2px solid #ffffff;
   }
   
-  #understand-game-header {
+  #playsense-header {
     background: #333333;
   }
   
@@ -299,7 +299,7 @@
 
 /* Dark mode enhancements */
 @media (prefers-color-scheme: dark) {
-  #understand-game-overlay {
+  #playsense-overlay {
     background: linear-gradient(145deg, #0f0f23 0%, #1a1a2e 100%);
   }
 }
