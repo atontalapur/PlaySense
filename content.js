@@ -49,6 +49,7 @@ class PlaySense {
       }
 
       this.createOverlay();
+      this.showOnboardingIfNeeded();
       this.detectGameType();
 
       // Re-detect game type periodically in case page content changes
@@ -257,7 +258,17 @@ class PlaySense {
     log.id = 'playsense-log';
     log.style.display = 'none';
 
+    const sportLabel = document.createElement('div');
+    sportLabel.id = 'playsense-sport-label';
+    sportLabel.style.cssText = 'font-size:10px; text-transform:uppercase; letter-spacing:1px; opacity:0.6; margin-top:4px;';
+
+    const lastUpdated = document.createElement('div');
+    lastUpdated.id = 'playsense-last-updated';
+    lastUpdated.style.cssText = 'font-size:10px; opacity:0.5; margin-top:2px;';
+
     content.appendChild(current);
+    content.appendChild(sportLabel);
+    content.appendChild(lastUpdated);
     content.appendChild(log);
 
     this.overlay.appendChild(header);
@@ -274,6 +285,37 @@ class PlaySense {
     // Make header draggable
     this.makeDraggable();
 
+  }
+
+  showOnboardingIfNeeded() {
+    chrome.storage.local.get(['hasSeenOnboarding'], (result) => {
+      if (result.hasSeenOnboarding) return;
+
+      const currentEl = document.getElementById('playsense-current');
+      if (!currentEl) return;
+
+      currentEl.textContent = '';
+
+      const msg = document.createElement('p');
+      msg.textContent = 'PlaySense explains live sports events in plain English as they happen.';
+      msg.style.cssText = 'margin:0 0 8px 0; font-size:13px;';
+
+      const sports = document.createElement('p');
+      sports.textContent = 'Supported: NFL, MLB, Formula 1 on ESPN.';
+      sports.style.cssText = 'margin:0 0 12px 0; font-size:12px; opacity:0.8;';
+
+      const btn = document.createElement('button');
+      btn.textContent = 'Got it';
+      btn.style.cssText = 'background:#4f46e5; color:white; border:none; padding:6px 16px; border-radius:6px; cursor:pointer; font-size:12px;';
+      btn.onclick = () => {
+        chrome.storage.local.set({ hasSeenOnboarding: true });
+        currentEl.textContent = 'Click the extension icon to start monitoring.';
+      };
+
+      currentEl.appendChild(msg);
+      currentEl.appendChild(sports);
+      currentEl.appendChild(btn);
+    });
   }
 
   makeDraggable() {
@@ -429,6 +471,9 @@ class PlaySense {
 
       // Performance tracking
       this.performanceMetrics.detectionTime = performance.now() - startTime;
+
+      const labelEl = document.getElementById('playsense-sport-label');
+      if (labelEl) labelEl.textContent = this.gameType ? this.gameType.toUpperCase() : '';
 
       this.updateOverlay(`Detected: ${this.gameType ? this.gameType.toUpperCase() : 'No supported game'}`);
 
@@ -1416,19 +1461,34 @@ class PlaySense {
   explainMLBPlay(playText) {
     const text = playText.toLowerCase();
 
-    if (text.includes('home run')) {
-      return 'HOME RUN! The batter hit the ball out of the park and scored a run!';
-    } else if (text.includes('strikeout')) {
-      return 'Strikeout! The batter got 3 strikes and is out!';
-    } else if (text.includes('hit') && text.includes('run')) {
-      return 'Hit and run! The batter got a hit and a runner scored!';
-    } else if (text.includes('walk')) {
-      return 'Walk! The pitcher threw 4 balls, so the batter gets to go to first base!';
-    } else if (text.includes('error')) {
-      return 'Error! A fielder made a mistake, so the batter gets to reach base!';
-    } else {
-      return `Play update: ${playText}`;
+    if (text.includes('home run') || text.includes('homerun')) {
+      return 'Home run! The batter hit the ball out of the park — all runners on base score, plus the batter.';
     }
+    if (text.includes('strikeout') || text.includes('struck out')) {
+      return 'Strikeout! The batter got three strikes and is out. The pitcher wins this matchup.';
+    }
+    if (text.includes('walk') || text.includes('base on balls')) {
+      return 'Walk! The pitcher threw 4 balls outside the strike zone, so the batter gets a free trip to first base.';
+    }
+    if (text.includes('stolen base')) {
+      return 'Stolen base! A runner sprinted to the next base while the pitcher was winding up.';
+    }
+    if (text.includes('double play')) {
+      return 'Double play! The defense got two outs on a single play — a huge momentum swing.';
+    }
+    if (text.includes('error')) {
+      return 'Error! A fielder made a mistake (dropped the ball or threw it badly), giving the offense extra bases they did not earn.';
+    }
+    if (text.includes('single')) {
+      return 'Single! The batter hit the ball and safely reached first base.';
+    }
+    if (text.includes('double') && !text.includes('double play')) {
+      return 'Double! The batter hit the ball far enough to reach second base safely.';
+    }
+    if (text.includes('triple')) {
+      return 'Triple! The batter hit the ball and made it all the way to third base — a rare and exciting hit.';
+    }
+    return `Play update: ${playText}`;
   }
 
   checkMLBUpdatesFallback() {
@@ -1717,21 +1777,37 @@ class PlaySense {
   explainF1Event(eventText) {
     const text = eventText.toLowerCase();
 
-    if (text.includes('overtake') || text.includes('overtaking')) {
-      return 'Overtake! One driver passed another driver to gain a position!';
-    } else if (text.includes('crash') || text.includes('accident')) {
-      return 'Crash! A driver had an accident and may be out of the race!';
-    } else if (text.includes('safety car')) {
-      return 'Safety Car! The race is slowed down due to an incident on track!';
-    } else if (text.includes('pit stop')) {
-      return 'Pit Stop! A driver came in to change tires and refuel!';
-    } else if (text.includes('penalty')) {
-      return 'Penalty! A driver received a penalty for breaking the rules!';
-    } else if (text.includes('fastest lap')) {
-      return 'Fastest Lap! A driver set the quickest lap time of the race!';
-    } else {
-      return `Race update: ${eventText}`;
+    if (text.includes('overtake') || text.includes('passed') || text.includes('position change')) {
+      return 'Position change! A driver has passed another, moving up in the race standings.';
     }
+    if (text.includes('pit stop') || text.includes('pitting')) {
+      const compound = text.includes('soft') ? ' (soft tyres — fast but wear quickly)' :
+                       text.includes('medium') ? ' (medium tyres — balanced choice)' :
+                       text.includes('hard') ? ' (hard tyres — slow but last longer)' : '';
+      return `Pit stop! A car pulled into the garage to change tyres${compound}. This costs about 2–3 seconds.`;
+    }
+    if (text.includes('virtual safety car') || text.includes('vsc')) {
+      return 'Virtual safety car! Drivers must slow to a set speed limit without a physical safety car. Used for minor incidents.';
+    }
+    if (text.includes('safety car')) {
+      return 'Safety car deployed! All cars must slow down and follow the safety car while an incident on track is cleared.';
+    }
+    if (text.includes('fastest lap')) {
+      return 'Fastest lap! A driver just set the quickest single lap of the race — worth 1 bonus championship point if they finish in the top 10.';
+    }
+    if (text.includes('drs')) {
+      return 'DRS activated! A car opened a flap on its rear wing to reduce drag and gain speed — used to help overtaking.';
+    }
+    if (text.includes('retire') || text.includes('dnf') || text.includes('out of the race')) {
+      return 'Retirement (DNF)! A car has dropped out of the race due to a mechanical failure or incident.';
+    }
+    if (text.includes('crash') || text.includes('accident')) {
+      return 'Incident on track! A driver has been in an accident and may be out of the race.';
+    }
+    if (text.includes('penalty')) {
+      return 'Penalty! A driver broke a rule (unsafe driving, track limits, etc.) and will serve a time penalty.';
+    }
+    return `Race update: ${eventText}`;
   }
 
   checkF1UpdatesFallback() {
@@ -1773,20 +1849,42 @@ class PlaySense {
     const text = playText.toLowerCase();
 
     if (text.includes('touchdown')) {
-      return 'TOUCHDOWN! A player reached the end zone and scored 6 points for their team!';
-    } else if (text.includes('field goal')) {
-      return 'Field Goal! The kicker scored 3 points by kicking the ball through the goalposts!';
-    } else if (text.includes('interception')) {
-      return 'Interception! The defense caught a pass meant for the offense and took control of the ball!';
-    } else if (text.includes('fumble')) {
-      return 'Fumble! A player dropped the ball and the other team might recover it!';
-    } else if (text.includes('penalty')) {
-      return 'Penalty! A rule was broken, so the referee is giving yards to one team as punishment!';
-    } else if (text.includes('sack')) {
-      return 'Sack! The quarterback was tackled behind the line before he could throw the ball!';
-    } else {
-      return `Play update: ${playText}`;
+      return 'Touchdown! A player reached the end zone and scored 6 points for their team.';
     }
+    if (text.includes('two-point conversion') || text.includes('two point conversion')) {
+      return 'Two-point conversion attempt! Instead of kicking for 1 extra point, they are trying to run or pass into the end zone for 2 points.';
+    }
+    if (text.includes('extra point') || text.includes(' pat ')) {
+      return 'Extra point! After a touchdown, the kicker attempts a short kick through the goalposts for 1 bonus point.';
+    }
+    if (text.includes('field goal')) {
+      return 'Field goal! The kicker scored 3 points by kicking the ball through the goalposts.';
+    }
+    if (text.includes('safety')) {
+      return 'Safety! The defense tackled an offensive player in their own end zone — worth 2 points for the defense.';
+    }
+    if (text.includes('interception')) {
+      return 'Interception! The defense caught a pass meant for the offense and took control of the ball.';
+    }
+    if (text.includes('fumble')) {
+      return 'Fumble! A player dropped the ball — whichever team recovers it gets possession.';
+    }
+    if (text.includes('sack')) {
+      return 'Sack! The quarterback was tackled behind the line before he could throw the ball.';
+    }
+    if (text.includes('punt')) {
+      return 'Punt! The offense kicked the ball away on 4th down rather than risk losing possession at this field position.';
+    }
+    if (text.includes('kickoff return') || text.includes('kick return')) {
+      return 'Kickoff return! After a score, the receiving team is running the kicked ball back up the field.';
+    }
+    if (text.includes('fourth down') || text.includes('4th down')) {
+      return '4th down! This is the offense\'s last chance to gain the yards needed for a first down before potentially losing the ball.';
+    }
+    if (text.includes('penalty') || text.includes('flag')) {
+      return 'Penalty! A referee spotted a rule violation and is moving the ball to penalize the offending team.';
+    }
+    return `Play update: ${playText}`;
   }
 
   explainMLBInning(inning) {
@@ -1888,9 +1986,10 @@ class PlaySense {
 
   updateOverlay(message) {
     const content = document.getElementById('playsense-current');
-    if (content) {
-      content.textContent = message;
-    }
+    if (content) content.textContent = message;
+
+    const ts = document.getElementById('playsense-last-updated');
+    if (ts) ts.textContent = `Last updated: ${new Date().toLocaleTimeString()}`;
   }
 
   updateLog() {
