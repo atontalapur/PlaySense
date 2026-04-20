@@ -1186,7 +1186,7 @@ class PlaySense {
 
           this.previousGameState[playKey] = latestPlay;
           const explanation = this.explainNFLPlay(latestPlay);
-          this.addEvent('NFL Play', explanation);
+          if (explanation)           this.addEvent('NFL Play', explanation);
         }
       }
 
@@ -1257,7 +1257,7 @@ class PlaySense {
 
           this.previousGameState.fallbackPlay = latestPlay;
           const explanation = this.explainNFLPlay(latestPlay);
-          this.addEvent('NFL Play', explanation);
+          if (explanation)           this.addEvent('NFL Play', explanation);
         }
       }
 
@@ -1432,7 +1432,7 @@ class PlaySense {
 
           this.previousGameState[playKey] = latestPlay;
           const explanation = this.explainMLBPlay(latestPlay);
-          this.addEvent('MLB Play', explanation);
+          if (explanation)           this.addEvent('MLB Play', explanation);
         }
       }
 
@@ -1506,7 +1506,7 @@ class PlaySense {
     if (text.includes('triple')) {
       return 'Triple! The batter hit the ball and made it all the way to third base — a rare and exciting hit.';
     }
-    return `Play update: ${playText}`;
+    return null;
   }
 
   checkMLBUpdatesFallback() {
@@ -1535,7 +1535,7 @@ class PlaySense {
 
           this.previousGameState.fallbackMLBPlay = latestPlay;
           const explanation = this.explainMLBPlay(latestPlay);
-          this.addEvent('MLB Play', explanation);
+          if (explanation)           this.addEvent('MLB Play', explanation);
         }
       }
 
@@ -1747,7 +1747,7 @@ class PlaySense {
 
           this.previousGameState[eventKey] = latestEvent;
           const explanation = this.explainF1Event(latestEvent);
-          this.addEvent('F1 Event', explanation);
+          if (explanation)           this.addEvent('F1 Event', explanation);
         }
       }
 
@@ -1825,7 +1825,7 @@ class PlaySense {
     if (text.includes('penalty')) {
       return 'Penalty! A driver broke a rule (unsafe driving, track limits, etc.) and will serve a time penalty.';
     }
-    return `Race update: ${eventText}`;
+    return null;
   }
 
   checkF1UpdatesFallback() {
@@ -1854,7 +1854,7 @@ class PlaySense {
 
           this.previousGameState.fallbackF1Event = latestEvent;
           const explanation = this.explainF1Event(latestEvent);
-          this.addEvent('F1 Event', explanation);
+          if (explanation)           this.addEvent('F1 Event', explanation);
         }
       }
 
@@ -1905,7 +1905,7 @@ class PlaySense {
     if (text.includes('penalty') || text.includes('flag')) {
       return 'Penalty! A referee spotted a rule violation and is moving the ball to penalize the offending team.';
     }
-    return `Play update: ${playText}`;
+    return null;
   }
 
   explainMLBInning(inning) {
