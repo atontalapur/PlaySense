@@ -1,7 +1,6 @@
 {
   "manifest_version": 3,
   "name": "PlaySense",
-  "short_name": "PlaySense",
   "version": "1.0.0",
   "description": "Real-time plain-English explanations of live NFL, MLB, and F1 events on ESPN.",
   "homepage_url": "https://github.com/atontalapur/PlaySense",
@@ -42,6 +41,12 @@
     }
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'"
-  }
+    "extension_pages": "script-src 'self'; style-src 'self'; object-src 'none'"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["privacy.html"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
