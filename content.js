@@ -17,6 +17,7 @@ class PlaySense {
       this.initRetryCount = 0;
       this.maxInitRetries = 5;
       this.isInitialized = false;
+      this.onboardingDismissed = false;
       this.performanceMetrics = {
         detectionTime: 0,
         updateTime: 0,
@@ -289,10 +290,22 @@ class PlaySense {
 
   showOnboardingIfNeeded() {
     chrome.storage.local.get(['hasSeenOnboarding'], (result) => {
-      if (result.hasSeenOnboarding) return;
+      if (chrome.runtime.lastError) {
+        console.warn('PlaySense: storage read failed —', chrome.runtime.lastError.message);
+        this.onboardingDismissed = true;
+        return;
+      }
+
+      if (result.hasSeenOnboarding) {
+        this.onboardingDismissed = true;
+        return;
+      }
 
       const currentEl = document.getElementById('playsense-current');
-      if (!currentEl) return;
+      if (!currentEl || !this.overlay) {
+        this.onboardingDismissed = true;
+        return;
+      }
 
       currentEl.textContent = '';
 
@@ -308,7 +321,12 @@ class PlaySense {
       btn.textContent = 'Got it';
       btn.style.cssText = 'background:#4f46e5; color:white; border:none; padding:6px 16px; border-radius:6px; cursor:pointer; font-size:12px;';
       btn.onclick = () => {
-        chrome.storage.local.set({ hasSeenOnboarding: true });
+        chrome.storage.local.set({ hasSeenOnboarding: true }, () => {
+          if (chrome.runtime.lastError) {
+            console.warn('PlaySense: storage write failed —', chrome.runtime.lastError.message);
+          }
+        });
+        this.onboardingDismissed = true;
         currentEl.textContent = 'Click the extension icon to start monitoring.';
       };
 
@@ -1467,7 +1485,7 @@ class PlaySense {
     if (text.includes('strikeout') || text.includes('struck out')) {
       return 'Strikeout! The batter got three strikes and is out. The pitcher wins this matchup.';
     }
-    if (text.includes('walk') || text.includes('base on balls')) {
+    if (/\bwalk(ed|s)?\b/.test(text) || text.includes('base on balls')) {
       return 'Walk! The pitcher threw 4 balls outside the strike zone, so the batter gets a free trip to first base.';
     }
     if (text.includes('stolen base')) {
@@ -1854,13 +1872,13 @@ class PlaySense {
     if (text.includes('two-point conversion') || text.includes('two point conversion')) {
       return 'Two-point conversion attempt! Instead of kicking for 1 extra point, they are trying to run or pass into the end zone for 2 points.';
     }
-    if (text.includes('extra point') || text.includes(' pat ')) {
+    if (text.includes('extra point') || /\bpat\b/.test(text)) {
       return 'Extra point! After a touchdown, the kicker attempts a short kick through the goalposts for 1 bonus point.';
     }
     if (text.includes('field goal')) {
       return 'Field goal! The kicker scored 3 points by kicking the ball through the goalposts.';
     }
-    if (text.includes('safety')) {
+    if (text.includes('safety') && !text.includes('safety car') && !text.includes('player safety')) {
       return 'Safety! The defense tackled an offensive player in their own end zone — worth 2 points for the defense.';
     }
     if (text.includes('interception')) {
@@ -1877,6 +1895,9 @@ class PlaySense {
     }
     if (text.includes('kickoff return') || text.includes('kick return')) {
       return 'Kickoff return! After a score, the receiving team is running the kicked ball back up the field.';
+    }
+    if (text.includes('kickoff') || text.includes('kick off')) {
+      return 'Kickoff! The ball is kicked to start the drive. If it reaches the end zone, the receiving team may take a touchback and start at their 25-yard line.';
     }
     if (text.includes('fourth down') || text.includes('4th down')) {
       return '4th down! This is the offense\'s last chance to gain the yards needed for a first down before potentially losing the ball.';
@@ -1985,6 +2006,8 @@ class PlaySense {
   }
 
   updateOverlay(message) {
+    if (!this.onboardingDismissed) return;
+
     const content = document.getElementById('playsense-current');
     if (content) content.textContent = message;
 
