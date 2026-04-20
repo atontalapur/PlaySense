@@ -1,8 +1,15 @@
 {
   "manifest_version": 3,
   "name": "PlaySense",
-  "version": "1.0",
-  "description": "Explains live sports events in simple terms for beginners",
+  "short_name": "PlaySense",
+  "version": "1.0.0",
+  "description": "Real-time plain-English explanations of live NFL, MLB, and F1 events on ESPN.",
+  "homepage_url": "https://github.com/atontalapur/PlaySense",
+  "icons": {
+    "16": "assets/icon16.png",
+    "48": "assets/icon48.png",
+    "128": "assets/icon128.png"
+  },
   "permissions": [
     "activeTab",
     "storage",
@@ -10,19 +17,13 @@
   ],
   "host_permissions": [
     "https://www.espn.com/*",
-    "https://espn.com/*",
-    "http://localhost/*",
-    "http://127.0.0.1/*",
-    "file:///*"
+    "https://espn.com/*"
   ],
   "content_scripts": [
     {
       "matches": [
-        "https://www.espn.com/*", 
-        "https://espn.com/*",
-        "http://localhost/*",
-        "http://127.0.0.1/*",
-        "file:///*"
+        "https://www.espn.com/*",
+        "https://espn.com/*"
       ],
       "js": ["content.js"],
       "css": ["styles.css"]
@@ -33,7 +34,14 @@
   },
   "action": {
     "default_popup": "popup.html",
-    "default_title": "PlaySense"
+    "default_title": "PlaySense",
+    "default_icon": {
+      "16": "assets/icon16.png",
+      "48": "assets/icon48.png",
+      "128": "assets/icon128.png"
+    }
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
   }
-  
 }
