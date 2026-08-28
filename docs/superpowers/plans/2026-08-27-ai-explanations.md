@@ -1064,7 +1064,10 @@ export function createPoller({
 
     const fresh = result.events.filter(e => !seen.has(e.id));
     fresh.forEach(e => seen.add(e.id));
-    if (fresh.length > 0) onEvents(fresh);
+    // Awaited: Task 15 makes the session's emit() async (it awaits the
+    // explainer per event). A bare call would make emission fire-and-forget
+    // and let two overlapping ticks deliver events out of order.
+    if (fresh.length > 0) await onEvents(fresh);
   }
 
   return {
@@ -1668,7 +1671,34 @@ Wrap the existing DOM-reading helpers so they return rows instead of calling `ad
   }
 ```
 
-- [ ] **Step 6: Verify no network calls remain in content.js**
+- [ ] **Step 6: Preserve the popup status contract**
+
+`popup.js:75` sends `{action:'getStatus'}` to this content script and
+`popup.js:105-113` render `gameType` and `eventCount` from the reply. Step 2
+deletes `detectGameType`, which is what sets `this.gameType` today. Keep the
+handler answering the same shape, sourcing the sport from the events the
+background sends:
+
+```js
+  // Sport is no longer detected here; it arrives with the events.
+  rememberSport(events) {
+    const withSport = events.find(e => e.sport);
+    if (withSport) this.gameType = withSport.sport;
+  }
+
+  handleStatusRequest(sendResponse) {
+    sendResponse({
+      isActive: this.isActive,
+      gameType: this.gameType || null,
+      eventCount: this.eventLog.length
+    });
+  }
+```
+
+Call `this.rememberSport(request.events)` at the top of the `events` branch in
+`handleBackgroundMessage`, and route `getStatus` to `handleStatusRequest`.
+
+- [ ] **Step 7: Verify no network calls remain in content.js**
 
 ```bash
 grep -n "fetch(\|XMLHttpRequest\|site.api.espn\|openf1\|anthropic" content.js
@@ -1676,11 +1706,13 @@ grep -n "fetch(\|XMLHttpRequest\|site.api.espn\|openf1\|anthropic" content.js
 
 Expected: no output. If anything matches, move it to the service worker.
 
-- [ ] **Step 7: Load the extension and verify manually**
+- [ ] **Step 8: Load the extension and verify manually**
 
-Load unpacked in Chrome, open an ESPN NFL game page from `site.api.espn.com/.../nfl/scoreboard` with `state: "in"`, click the extension icon, start monitoring. Confirm the overlay populates with real plays and that the service worker console shows no errors.
+Load unpacked in Chrome, open an ESPN NFL game page from `site.api.espn.com/.../nfl/scoreboard` with `state: "in"`, click the extension icon, start monitoring. Confirm the overlay populates with real plays, that the popup still shows the
+correct sport and a rising event count, and that the service worker console
+shows no errors.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add content.js
