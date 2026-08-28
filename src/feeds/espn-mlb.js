@@ -1,5 +1,6 @@
 // src/feeds/espn-mlb.js
 import { makeEvent } from '../events.js';
+import { espnGameState } from './espn-status.js';
 
 const BASE = 'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/summary';
 
@@ -37,5 +38,6 @@ export function parseMlbSummary(json) {
 export const EspnMlbFeed = {
   sport: 'mlb',
   url: (eventId) => `${BASE}?event=${encodeURIComponent(eventId)}`,
-  parse: parseMlbSummary
+  parse: parseMlbSummary,
+  gameState: espnGameState
 };

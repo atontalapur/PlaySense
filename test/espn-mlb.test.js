@@ -61,3 +61,9 @@ test('does not throw when text is present but not a string', () => {
   assert.equal(events.length, 2);
   assert.ok(events.every(e => e.text === ''));
 });
+
+test('reads the game state from the summary header', () => {
+  // The recorded MLB fixture is a completed game.
+  assert.equal(EspnMlbFeed.gameState(fixture), 'post');
+  assert.equal(EspnMlbFeed.gameState({ header: {} }), null);
+});

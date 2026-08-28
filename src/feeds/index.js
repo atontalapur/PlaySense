@@ -93,5 +93,15 @@ export async function fetchEvents(feed, eventId, fetchImpl = fetch) {
     return { ok: false, events: [], reason: 'parse-error' };
   }
 
-  return { ok: true, events, reason: null };
+  // Read separately from parse: a feed that cannot report its state still has
+  // perfectly good events, so a throw here must not discard them. `null` means
+  // unknown, which callers treat as "not pre".
+  let state = null;
+  try {
+    state = feed.gameState ? feed.gameState(json) : null;
+  } catch {
+    state = null;
+  }
+
+  return { ok: true, events, reason: null, state };
 }

@@ -97,6 +97,13 @@ async function ensureSession(tabId, url) {
 async function pumpAndSave(session, tabId) {
   await session.pump();
   await storageSet({ [seenKey(tabId)]: session.seenIds() });
+  // The game ended during this pump. Drop the session so the next beat cannot
+  // rebuild and re-poll it; the content script stops its clock off the
+  // `finished` flag in the reply, and this is the belt to that braces.
+  if (session.state().finished) {
+    stopSession(tabId);
+    await storageRemove([seenKey(tabId)]);
+  }
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {

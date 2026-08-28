@@ -167,3 +167,27 @@ test('pump does not resolve until emission has been delivered', async () => {
   assert.equal(evtMsg.events[0].explanation, 'a sack');
   session.stop();
 });
+
+test('a finished game stops the session and notifies the tab', async () => {
+  const messages = [];
+  const d = deps({
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({
+        header: { competitions: [{ status: { type: { state: 'post' } } }] },
+        drives: { previous: [{ plays: [{ id: '9', text: 'Sack', type: { text: 'Sack' } }] }] }
+      })
+    }),
+    sendToTab: async (tabId, msg) => { messages.push(msg); return {}; }
+  });
+  const session = createSession({
+    tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298', deps: d
+  });
+  await session.start();
+  await session.pump();
+
+  assert.ok(messages.some(m => m.action === 'events'), 'the final plays are still delivered');
+  assert.ok(messages.some(m => m.action === 'finished'), 'the tab must be told to stop beating');
+  assert.equal(session.state().finished, true);
+  assert.equal(session.state().active, false, 'a finished session must not keep polling');
+});

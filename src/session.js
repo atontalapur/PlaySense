@@ -7,13 +7,26 @@ export function createSession({ tabId, url, deps, seed = [] }) {
   const detected = detectGame(url);
   let poller = null;
   let degraded = false;
+  let finished = false;
 
   const state = () => ({
     sport: detected ? detected.sport : null,
     eventId: detected ? detected.eventId : null,
     degraded,
+    finished,
     active: poller !== null
   });
+
+  // Spec 4.3: the game is over, so there is nothing left to poll for. Retains
+  // seenIds() via the seed swap so a caller that persists them still can.
+  async function switchToFinished() {
+    if (finished) return;
+    finished = true;
+    seed = poller ? poller.seenIds() : seed;
+    if (poller) poller.stop();
+    poller = null;
+    await deps.sendToTab(tabId, { action: 'finished' });
+  }
 
   // Low importance is suppressed entirely; it never reaches the overlay.
   // Both createPoller call sites pass this as an expression-bodied arrow so the
@@ -65,6 +78,10 @@ export function createSession({ tabId, url, deps, seed = [] }) {
         fetchImpl: deps.fetchImpl,
         onEvents: (evts) => emit(evts),
         onFailure: (reason) => switchToDegraded(reason),
+        // Only the structured feeds can report a finished game; the DOM
+        // scraper's gameState is always null, so the degraded poller needs no
+        // equivalent.
+        onFinished: () => switchToFinished(),
         seed
       });
       return true;

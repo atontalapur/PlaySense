@@ -1,5 +1,6 @@
 // src/feeds/espn-nfl.js
 import { makeEvent } from '../events.js';
+import { espnGameState } from './espn-status.js';
 
 const BASE = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary';
 
@@ -69,5 +70,6 @@ export function parseNflSummary(json) {
 export const EspnNflFeed = {
   sport: 'nfl',
   url: (eventId) => `${BASE}?event=${encodeURIComponent(eventId)}`,
-  parse: parseNflSummary
+  parse: parseNflSummary,
+  gameState: espnGameState
 };

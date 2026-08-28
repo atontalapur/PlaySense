@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createPoller } from '../src/poller.js';
+import { createPoller, EMPTY_POLLS_BEFORE_DEGRADE } from '../src/poller.js';
 
 function feedReturning(batches) {
   let i = 0;
@@ -126,4 +126,91 @@ test('a seeded poller does not re-emit ids it was told were already seen', async
   await poller.tick();
   assert.deepEqual(seen, ['c'], 'a restarted worker must not replay the game');
   assert.deepEqual(poller.seenIds().sort(), ['a', 'b', 'c']);
+});
+
+// --- spec 4.2: an empty play list is a degradation signal ---------------------
+
+const emptyFeed = (state) => ({
+  sport: 'nfl',
+  url: () => 'https://example.test/x',
+  parse: () => [],
+  gameState: () => state
+});
+
+test('one empty poll is not enough to degrade', async () => {
+  const failures = [];
+  const poller = createPoller({
+    feed: emptyFeed('in'), eventId: '1', fetchImpl: okFetch,
+    onEvents: () => {}, onFailure: (r) => failures.push(r)
+  });
+  await poller.tick();
+  assert.deepEqual(failures, [], 'a single empty poll is normal mid-game jitter');
+});
+
+test('repeated empty polls on a live game trigger the degraded fallback', async () => {
+  const failures = [];
+  const poller = createPoller({
+    feed: emptyFeed('in'), eventId: '1', fetchImpl: okFetch,
+    onEvents: () => {}, onFailure: (r) => failures.push(r)
+  });
+  for (let i = 0; i < EMPTY_POLLS_BEFORE_DEGRADE; i++) await poller.tick();
+  assert.deepEqual(failures, ['empty-feed']);
+});
+
+test('a not-yet-started game never degrades on its empty play list', async () => {
+  const failures = [];
+  const poller = createPoller({
+    feed: emptyFeed('pre'), eventId: '1', fetchImpl: okFetch,
+    onEvents: () => {}, onFailure: (r) => failures.push(r)
+  });
+  for (let i = 0; i < EMPTY_POLLS_BEFORE_DEGRADE * 2; i++) await poller.tick();
+  assert.deepEqual(failures, [], 'a pre game legitimately has zero plays');
+});
+
+test('the empty-poll run resets as soon as the feed returns events', async () => {
+  let empty = true;
+  const failures = [];
+  const feed = {
+    sport: 'nfl',
+    url: () => 'https://example.test/x',
+    parse: () => (empty ? [] : [{ id: `p${Math.random()}` }]),
+    gameState: () => 'in'
+  };
+  const poller = createPoller({
+    feed, eventId: '1', fetchImpl: okFetch,
+    onEvents: () => {}, onFailure: (r) => failures.push(r)
+  });
+  for (let i = 0; i < EMPTY_POLLS_BEFORE_DEGRADE - 1; i++) await poller.tick();
+  empty = false;
+  await poller.tick();
+  empty = true;
+  for (let i = 0; i < EMPTY_POLLS_BEFORE_DEGRADE - 1; i++) await poller.tick();
+  assert.deepEqual(failures, [], 'the run must be consecutive, not cumulative');
+});
+
+// --- spec 4.3: polling stops when the game is over ---------------------------
+
+test('a finished game reports onFinished and stops polling', async () => {
+  let parses = 0;
+  const feed = {
+    sport: 'nfl',
+    url: () => 'https://example.test/x',
+    parse: () => { parses++; return [{ id: `last-${parses}` }]; },
+    gameState: () => 'post'
+  };
+  const seen = [];
+  let finished = 0;
+  const poller = createPoller({
+    feed, eventId: '1', fetchImpl: okFetch,
+    onEvents: (evts) => seen.push(...evts.map(e => e.id)),
+    onFinished: () => { finished++; }
+  });
+
+  await poller.tick();
+  assert.equal(finished, 1);
+  assert.deepEqual(seen, ['last-1'], 'the final poll must still deliver its events');
+
+  await poller.tick();
+  assert.equal(parses, 1, 'a finished poller must not fetch again');
+  assert.equal(finished, 1);
 });

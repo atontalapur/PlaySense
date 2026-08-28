@@ -41,5 +41,13 @@ export const OpenF1Feed = {
   sport: 'f1',
   url: (sessionKey) => `${BASE}/race_control?session_key=${encodeURIComponent(sessionKey)}`,
   sessionsUrl: (year) => `${BASE}/sessions?year=${encodeURIComponent(year)}`,
-  parse: parseRaceControl
+  parse: parseRaceControl,
+  // The race-control feed carries no session state, and session_key=latest
+  // keeps resolving to the last session after a race, so there is nothing here
+  // to detect a finished session from.
+  gameState: () => null,
+  // Opts out of the empty-feed degradation rule. Race control is a sparse
+  // stewards' feed: it is legitimately empty for the whole build-up to a
+  // session, so an empty response is no evidence at all that it has broken.
+  emptyIsFailure: false
 };

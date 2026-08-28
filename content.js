@@ -133,6 +133,12 @@ class PlaySense {
         this.addEvent('System', 'Live data feed unavailable. Falling back to page reading.');
         sendResponse({ ok: true });
         break;
+      case 'finished':
+        this.stopPollTimer();
+        this.isActive = false;
+        this.addEvent('System', 'This game has finished. Monitoring stopped.');
+        sendResponse({ ok: true });
+        break;
       case 'legacyScrape':
         sendResponse({ rows: this.legacyScrape() });
         break;
@@ -496,7 +502,16 @@ class PlaySense {
         this.pollTimer = setInterval(() => {
           chrome.runtime.sendMessage(
             { action: 'poll', url: window.location.href },
-            () => { void chrome.runtime.lastError; }
+            (pollReply) => {
+              void chrome.runtime.lastError;
+              // The game reached its final state. Stop the clock here rather
+              // than beating at ESPN every 10s for the rest of the night and
+              // holding the service worker awake with each beat.
+              if (pollReply && pollReply.state && pollReply.state.finished) {
+                this.stopPollTimer();
+                this.isActive = false;
+              }
+            }
           );
         }, this.POLL_INTERVAL_MS);
       }

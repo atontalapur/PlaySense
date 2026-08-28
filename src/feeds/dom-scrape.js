@@ -18,6 +18,10 @@ export function createDomScrapeFeed(sport) {
   return {
     sport,
     url: () => 'dom://scrape',
+    // This IS the fallback, so an empty scrape has nowhere left to degrade to,
+    // and a rendered page carries no reliable game-state marker.
+    emptyIsFailure: false,
+    gameState: () => null,
     parse(rows) {
       if (!Array.isArray(rows)) return [];
       return rows

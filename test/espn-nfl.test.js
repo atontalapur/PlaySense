@@ -107,3 +107,9 @@ test('skips null and non-object plays and drives instead of throwing', () => {
   });
   assert.deepEqual(events.map(e => e.id), ['7', '8']);
 });
+
+test('reads the game state from the summary header', () => {
+  assert.equal(EspnNflFeed.gameState(fixture), 'in');
+  assert.equal(EspnNflFeed.gameState({}), null);
+  assert.equal(EspnNflFeed.gameState(null), null);
+});
