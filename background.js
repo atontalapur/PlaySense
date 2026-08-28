@@ -1,7 +1,14 @@
 // background.js — service worker (ES module; manifest sets "type": "module")
 import { createSession } from './src/session.js';
+import { once } from './src/once.js';
 
 const sessions = new Map(); // tabId -> session (lost if the worker restarts)
+// tabId -> in-flight session-construction promise. Guards against two
+// messages for the same tab (two poll beats, start racing a poll, a burst
+// delivered as the worker wakes from termination) each building and pumping
+// their own session before either reaches sessions.set — see Task 9 fix
+// round 1. Concurrent callers must all receive the same session object.
+const inFlight = new Map();
 
 const seenKey = (tabId) => `seen-${tabId}`;
 
@@ -28,26 +35,36 @@ function stopSession(tabId) {
     session.stop();
     sessions.delete(tabId);
   }
+  // A stop mid-construction must not leave a stale in-flight promise that a
+  // later message would be handed back.
+  inFlight.delete(tabId);
 }
 
 // Rebuilds the session if the worker was terminated since the last message,
 // seeding it with the ids already shown so the game is not replayed.
+// Construction is memoised per tab via `once` so that two messages for the
+// same tab arriving before the first session finishes building (two poll
+// beats, start racing a poll, a burst on worker wake) share the same
+// in-progress construction instead of each building — and pumping — their
+// own session.
 async function ensureSession(tabId, url) {
   const existing = sessions.get(tabId);
   if (existing) return existing;
 
-  const stored = await storageGet([seenKey(tabId)]);
-  const seed = stored[seenKey(tabId)] || [];
-  const session = createSession({
-    tabId,
-    url,
-    deps: { fetchImpl: (u) => fetch(u), sendToTab },
-    seed
+  return once(inFlight, tabId, async () => {
+    const stored = await storageGet([seenKey(tabId)]);
+    const seed = stored[seenKey(tabId)] || [];
+    const session = createSession({
+      tabId,
+      url,
+      deps: { fetchImpl: (u) => fetch(u), sendToTab },
+      seed
+    });
+    const started = await session.start();
+    if (!started) return null;
+    sessions.set(tabId, session);
+    return session;
   });
-  const started = await session.start();
-  if (!started) return null;
-  sessions.set(tabId, session);
-  return session;
 }
 
 async function pumpAndSave(session, tabId) {
@@ -69,6 +86,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       .then(async (session) => {
         if (session) await pumpAndSave(session, tabId);
         sendResponse({ ok: Boolean(session), state: session ? session.state() : null });
+      })
+      // Without this, a rejected storage call, session.start(), or fetch
+      // never reaches sendResponse and the caller's callback silently hangs.
+      .catch((err) => {
+        sendResponse({ ok: false, reason: 'error', message: String(err && err.message || err) });
       });
     return true;
   }
@@ -76,20 +98,28 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // The content script owns the clock and beats every 10s. Each beat both
   // drives one poll cycle and resets this worker's 30s idle timer.
   if (request.action === 'poll') {
-    ensureSession(tabId, request.url).then(async (session) => {
-      if (!session) {
-        sendResponse({ ok: false, reason: 'not-a-game' });
-        return;
-      }
-      await pumpAndSave(session, tabId);
-      sendResponse({ ok: true, state: session.state() });
-    });
+    ensureSession(tabId, request.url)
+      .then(async (session) => {
+        if (!session) {
+          sendResponse({ ok: false, reason: 'not-a-game' });
+          return;
+        }
+        await pumpAndSave(session, tabId);
+        sendResponse({ ok: true, state: session.state() });
+      })
+      .catch((err) => {
+        sendResponse({ ok: false, reason: 'error', message: String(err && err.message || err) });
+      });
     return true;
   }
 
   if (request.action === 'stop') {
     stopSession(tabId);
-    storageRemove([seenKey(tabId)]).then(() => sendResponse({ ok: true }));
+    storageRemove([seenKey(tabId)])
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => {
+        sendResponse({ ok: false, reason: 'error', message: String(err && err.message || err) });
+      });
     return true;
   }
 
