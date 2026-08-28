@@ -2748,10 +2748,15 @@ Change `emit` to await explanations before sending, and accept the chain via `de
 
     const explained = [];
     for (const event of shown) {
+      // Stop halts the REMAINING backlog. The first pump of a live game can
+      // carry ~32 high-importance events, each a multi-second paid call; a user
+      // who stops monitoring partway must not be billed for the rest of the loop.
+      if (!poller) break;
       const explanation = deps.explainer ? await deps.explainer.explain(event) : null;
       explained.push({ ...event, explanation });
     }
-    deps.sendToTab(tabId, { action: 'events', events: explained });
+    if (explained.length === 0) return;
+    await deps.sendToTab(tabId, { action: 'events', events: explained });
   }
 ```
 
@@ -2766,16 +2771,36 @@ import { RuleExplainer, createClaudeExplainer, createExplainerChain } from './sr
 const storageGet = (keys) => new Promise((resolve) => chrome.storage.local.get(keys, resolve));
 const storageSet = (items) => new Promise((resolve) => chrome.storage.local.set(items, resolve));
 
-const claude = createClaudeExplainer({
-  getKey: async () => (await storageGet(['anthropicApiKey'])).anthropicApiKey || null,
-  getBudget: async () => (await storageGet(['claudeBudget'])).claudeBudget || null,
-  setBudget: async (budget) => storageSet({ claudeBudget: budget })
-});
-
-const explainer = createExplainerChain([claude, RuleExplainer]);
+// Built per tab inside ensureSession, so isCancelled can be bound to THIS
+// tab's liveness. stopSession deletes the map entry, so an in-flight call is
+// cancelled the moment the user stops monitoring.
+function buildExplainer(tabId) {
+  const claude = createClaudeExplainer({
+    getKey: async () => (await storageGet(['anthropicApiKey'])).anthropicApiKey || null,
+    getBudget: async () => (await storageGet(['claudeBudget'])).claudeBudget || null,
+    setBudget: async (budget) => storageSet({ claudeBudget: budget }),
+    isCancelled: () => !sessions.has(tabId)
+  });
+  return createExplainerChain([claude, RuleExplainer]);
+}
 ```
 
-Pass `explainer` in the `deps` object given to `createSession`.
+Inside `ensureSession`, build the explainer for that tab and pass it in `deps`
+alongside `fetchImpl` and `sendToTab`:
+
+```js
+  const session = createSession({
+    tabId,
+    url,
+    deps: { fetchImpl: (u) => fetch(u), sendToTab, explainer: buildExplainer(tabId) },
+    seed
+  });
+```
+
+Note the ordering constraint: `isCancelled` reads `sessions.has(tabId)`, and
+`ensureSession` only calls `sessions.set` after `session.start()` succeeds. That
+is correct — no explanation can run before the session is registered, because
+nothing pumps until `ensureSession` has returned.
 
 - [ ] **Step 6: Add the Anthropic host permission**
 
