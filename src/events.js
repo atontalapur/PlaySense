@@ -48,6 +48,10 @@ export function classifyImportance(raw = {}) {
   return IMPORTANCE.NORMAL;
 }
 
+// Note: classifyImportance reads downDistanceText, scoreValue, flag, and category
+// for classification but deliberately does not carry them onto the event object.
+// Call classifyImportance only on raw feed payloads, never on a GameEvent returned
+// by makeEvent, or importance will be silently misclassified.
 export function makeEvent(fields) {
   return {
     id: String(fields.id),
