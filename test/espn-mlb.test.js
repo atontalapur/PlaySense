@@ -46,3 +46,18 @@ test('feed builds the correct endpoint url', () => {
     'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/summary?event=401816696'
   );
 });
+
+test('does not throw when text is present but not a string', () => {
+  const json = {
+    plays: [
+      { id: 'a1', type: { text: 'Play Result' }, text: 12345 },
+      { id: 'a2', type: { text: 'Play Result' }, text: {} }
+    ]
+  };
+  let events;
+  assert.doesNotThrow(() => {
+    events = parseMlbSummary(json);
+  });
+  assert.equal(events.length, 2);
+  assert.ok(events.every(e => e.text === ''));
+});

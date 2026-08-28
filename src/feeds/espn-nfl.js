@@ -6,13 +6,15 @@ const BASE = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary
 function playToEvent(play, driveIndex, playIndex) {
   const id = play.id
     ? String(play.id)
-    : `d${driveIndex}p${playIndex}-${play.sequenceNumber || ''}`;
+    : play.sequenceNumber
+      ? `seq-${play.sequenceNumber}`
+      : `d${driveIndex}p${playIndex}`;
 
   return makeEvent({
     id,
     sport: 'nfl',
     type: play.type && play.type.text ? play.type.text : null,
-    text: (play.text || '').trim(),
+    text: typeof play.text === 'string' ? play.text.trim() : '',
     period: play.period
       ? { type: 'Quarter', number: play.period.number, display: `Q${play.period.number}` }
       : null,

@@ -63,3 +63,30 @@ test('feed builds the correct endpoint url', () => {
     'https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873298'
   );
 });
+
+test('does not throw when text is present but not a string', () => {
+  const json = {
+    drives: {
+      previous: [{ plays: [{ id: 'p1', text: 12345 }, { id: 'p2', text: {} }] }],
+      current: null
+    }
+  };
+  let events;
+  assert.doesNotThrow(() => {
+    events = parseNflSummary(json);
+  });
+  assert.equal(events.length, 2);
+  assert.ok(events.every(e => e.text === ''));
+});
+
+test('fallback id for a play with no id is stable across the drive boundary', () => {
+  const play = { sequenceNumber: 42, text: 'Run play' };
+  const inCurrent = parseNflSummary({
+    drives: { previous: [], current: { plays: [play] } }
+  })[0];
+  const inPrevious = parseNflSummary({
+    drives: { previous: [{ plays: [play] }], current: null }
+  })[0];
+  assert.equal(inCurrent.id, inPrevious.id);
+  assert.equal(inCurrent.id, 'seq-42');
+});

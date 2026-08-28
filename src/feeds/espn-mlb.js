@@ -15,7 +15,7 @@ export function parseMlbSummary(json) {
         id: p.id ? String(p.id) : `${p.atBatId || 'ab'}-${p.sequenceNumber != null ? p.sequenceNumber : i}`,
         sport: 'mlb',
         type: p.type.text,
-        text: (p.text || '').trim(),
+        text: typeof p.text === 'string' ? p.text.trim() : '',
         period: p.period
           ? {
               type: p.period.type || null,

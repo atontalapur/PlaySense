@@ -55,3 +55,16 @@ test('feed builds correct urls', () => {
     'https://api.openf1.org/v1/sessions?year=2026'
   );
 });
+
+test('does not throw when text is present but not a string', () => {
+  const json = [
+    { session_key: 1, date: '2026-01-01T00:00:00Z', message: 12345 },
+    { session_key: 1, date: '2026-01-01T00:00:01Z', message: {} }
+  ];
+  let events;
+  assert.doesNotThrow(() => {
+    events = parseRaceControl(json);
+  });
+  assert.equal(events.length, 2);
+  assert.ok(events.every(e => e.text === ''));
+});
