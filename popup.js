@@ -73,10 +73,21 @@ document.addEventListener('DOMContentLoaded', function () {
     });
   });
 
+  // Anchored on the hostname, matching detectGame in src/feeds/index.js. A
+  // substring test also accepts https://evil.com/?ref=espn.com and
+  // https://espn.com.evil.net/.
+  function isEspnPage(rawUrl) {
+    try {
+      return /(^|\.)espn\.com$/i.test(new URL(rawUrl).hostname);
+    } catch {
+      return false;
+    }
+  }
+
   function updateStatus() {
     chrome.tabs.query({ active: true, currentWindow: true }, function (tabs) {
       const currentUrl = tabs[0] ? tabs[0].url : '';
-      const isSupportedPage = currentUrl.includes('espn.com');
+      const isSupportedPage = isEspnPage(currentUrl);
 
       const espnLink = document.getElementById('espnLink');
       if (!isSupportedPage) {

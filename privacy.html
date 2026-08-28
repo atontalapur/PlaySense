@@ -21,7 +21,7 @@
 </head>
 <body>
   <h1>PlaySense Privacy Policy</h1>
-  <p class="updated">Last updated: April 20, 2026</p>
+  <p class="updated">Last updated: August 27, 2026</p>
 
   <h2>What PlaySense does</h2>
   <p>PlaySense is a Chrome extension that reads ESPN game pages and displays plain-English explanations of live sports events in an overlay on your screen.</p>
@@ -69,9 +69,26 @@
 
   <h2>What PlaySense stores</h2>
   <p>
-    A single flag recording whether you have seen the welcome message, kept in
-    your browser via <code>chrome.storage.local</code>. Game events are held in
-    memory for the current session and are discarded when the tab closes.
+    Everything below is stored only in this browser. None of it is transmitted
+    to the extension author, and PlaySense has no server to transmit it to.
+  </p>
+  <p>In <code>chrome.storage.local</code>, which persists until you remove it:</p>
+  <ul>
+    <li>Your Anthropic API key, if you have chosen to save one. Clearing it in
+      the popup deletes it.</li>
+    <li>A count of how many explanation requests have been made today, plus the
+      date it applies to. This is what enforces the 500-per-day limit above.</li>
+    <li>A single flag recording whether you have seen the welcome message.</li>
+  </ul>
+  <p>
+    In <code>chrome.storage.session</code>, which is held in memory and cleared
+    when you close the browser: the identifiers of the plays already shown for
+    each tab being monitored, so that a game is not replayed from the start.
+    These are removed when you stop monitoring or close the tab.
+  </p>
+  <p>
+    Game events themselves are held in memory for the current session and are
+    discarded when the tab closes.
   </p>
   <h2>What PlaySense does not do</h2>
   <p>
