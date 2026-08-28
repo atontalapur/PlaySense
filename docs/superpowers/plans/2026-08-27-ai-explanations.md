@@ -2128,7 +2128,33 @@ Expected: all tests pass. Sprint 1 is independently shippable at this point — 
 
 **Files:** none (probe only)
 
-**This is a gate.** The spec records that calling `api.anthropic.com` from an extension service worker is unverified. Do not write explainer code until this passes.
+**This gate is now RESOLVED — read the evidence before doing anything.**
+
+The plan originally made this a hard stop because direct browser access to
+`api.anthropic.com` was unverified, and if blocked, BYOK would need a proxy and
+the zero-cost Phase 1 assumption would fail. That question has since been
+answered without a key:
+
+- A CORS preflight (`OPTIONS /v1/messages`) from a `chrome-extension://` origin
+  returns **HTTP 200** with `access-control-allow-origin: *` and an
+  `access-control-allow-headers` list containing exactly the four headers this
+  design needs: `content-type`, `x-api-key`, `anthropic-version`, and
+  `anthropic-dangerous-direct-browser-access`.
+- A `POST` sending `anthropic-dangerous-direct-browser-access: true` comes back
+  with `access-control-allow-origin: *` (401 only because no key was supplied),
+  and the response's `vary` header names that same header — so it is precisely
+  what gates browser CORS.
+- The identical `POST` **without** that header returns no `access-control-allow-origin`
+  at all.
+- Independently: MV3 service-worker fetches covered by `host_permissions` are not
+  subject to CORS in the first place. This is belt and braces.
+
+**Conclusion: direct access is supported, the header set in Task 14 is correct,
+and the BYOK path needs no proxy. Proceed to Task 13.**
+
+What remains is a confirmation the user must run, because it needs a real API
+key. It is no longer a gate that can invalidate the approach — it is a sanity
+check that the key works end to end.
 
 - [ ] **Step 1: Add the host permission temporarily**
 
@@ -2160,7 +2186,7 @@ console.log(res.status, await res.text());
 
 - **200** — direct access works. Note whether it also succeeds with the `anthropic-dangerous-direct-browser-access` header removed, and use the minimal working header set in Task 14.
 - **401** — the key is wrong. Fix the key and re-run; this is not a blocker.
-- **403 or a CORS error** — direct access is blocked. **Stop. Do not continue to Task 13.** Report to the user that BYOK requires a proxy, which changes Phase 1 from $0 and is a re-scoping decision for them, not an implementation detail to absorb.
+- **403 or a CORS error** — this would contradict the preflight evidence above. Stop, report it, and treat the proxy question as a re-scoping decision for the user rather than absorbing it. Given the allow-list observed, this outcome is unlikely.
 
 - [ ] **Step 4: Revert the manifest change**
 
