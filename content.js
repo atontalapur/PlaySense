@@ -9,9 +9,9 @@ class PlaySense {
       this.eventLog = [];
       this.overlay = null;
       this.checkInterval = null;
+      this.pollTimer = null;
       this.errorCount = 0;
       this.maxErrors = 10;
-      this.maxRetries = 3;
       this.initRetryCount = 0;
       this.maxInitRetries = 5;
       this.isInitialized = false;
@@ -485,6 +485,7 @@ class PlaySense {
           this.addEvent('System', 'This page is not a supported live game.');
           return;
         }
+        if (!this.isActive) return;
         this.stopPollTimer();
         // Each beat drives one poll cycle in the worker AND resets its 30s
         // idle timer, which is what keeps the worker alive while monitoring.
