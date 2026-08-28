@@ -8,7 +8,7 @@
   background: linear-gradient(145deg, #1a1d29 0%, #2d3142 100%) !important;
   color: #e8eaed !important;
   border-radius: 16px !important;
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif !important;
   font-size: 14px !important;
   font-weight: 400 !important;
   z-index: 2147483647 !important; /* Maximum z-index */
