@@ -11,8 +11,7 @@
   },
   "permissions": [
     "activeTab",
-    "storage",
-    "scripting"
+    "storage"
   ],
   "host_permissions": [
     "https://www.espn.com/*",
@@ -45,7 +44,7 @@
     }
   },
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; style-src 'self'; object-src 'none'"
+    "extension_pages": "script-src 'self'; style-src 'self' 'unsafe-inline'; object-src 'none'"
   },
   "web_accessible_resources": [
     {
