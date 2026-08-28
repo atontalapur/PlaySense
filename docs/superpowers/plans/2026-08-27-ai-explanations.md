@@ -1136,9 +1136,12 @@ export function createPoller({
   onEvents,
   onFailure = () => {},
   fetchImpl = fetch,
-  intervalMs = DEFAULT_INTERVAL_MS
+  intervalMs = DEFAULT_INTERVAL_MS,
+  seed = []
 }) {
-  const seen = new Set();
+  // Seeded from chrome.storage.session so a terminated-and-restarted service
+  // worker does not treat the whole game as new. See Task 9.
+  const seen = new Set(seed);
   let timer = null;
   let stopped = false;
 
@@ -1168,6 +1171,7 @@ export function createPoller({
   return {
     tick,
     seenCount: () => seen.size,
+    seenIds: () => Array.from(seen),
     start() {
       stopped = false;
       tick();
@@ -1358,14 +1362,40 @@ git commit -m "feat: add DOM scrape fallback feed behind the GameFeed contract"
 **Files:**
 - Modify: `background.js` (replace entirely — currently a 12-line stub)
 - Create: `src/session.js`
+- Modify: `src/poller.js` (add `seed` option and `seenIds()`)
 - Test: `test/session.test.js`
+- Test: `test/poller.test.js` (add the seed test)
 
 **Interfaces:**
 - Consumes: `detectGame`, `feedForSport` from `src/feeds/index.js`; `createPoller` from `src/poller.js`; `createDomScrapeFeed`, `createTabScrapeFetch` from `src/feeds/dom-scrape.js`
 - Produces:
-  - `createSession({tabId, url, deps}) -> {start(), stop(), state()}`
+  - `createSession({tabId, url, deps, seed}) -> {start(), pump(), stop(), state(), seenIds()}`
+
+## MV3 lifecycle constraint — read before writing any code
+
+Chrome terminates an extension service worker after **30 seconds of inactivity**.
+An active `setInterval` does **not** keep it alive; only receiving an event or
+calling an extension API resets the idle timer. `chrome.alarms` cannot substitute
+here because its minimum period is 30s and this design polls at 10s.
+
+Two consequences, both of which this task must handle:
+
+1. **The service worker cannot own the clock.** A `setInterval` in `background.js`
+   dies with the worker and polling stops silently — the overlay just freezes.
+   So the **content script drives the cadence**: it owns the 10s interval (it
+   lives as long as the page) and sends `{action:'poll'}` to the background on
+   each beat. Each message both triggers one poll cycle and resets the worker's
+   idle timer, so the worker stays alive exactly as long as monitoring is active.
+
+2. **Globals do not survive a restart.** If the worker is terminated anyway
+   (memory pressure, a throttled background tab), the in-memory `sessions` Map
+   and the poller's `seen` Set are gone. On the next message the session rebuilds
+   with an empty `seen`, so every play already shown is treated as new: the
+   overlay replays the entire game, and once the Claude explainer lands in Task
+   15 that replay is **billed to the user's API key**. So seen ids are persisted
+   to `chrome.storage.session` per tab and used to seed a rebuilt session.
   - Message protocol, fixed here and depended on by Task 10:
-    - content to background: `{action:'start', url}` / `{action:'stop'}` / `{action:'getStatus'}`
+    - content to background: `{action:'start', url}` / `{action:'poll'}` / `{action:'stop'}` / `{action:'getStatus'}`
     - background to content: `{action:'events', events:[GameEvent]}` / `{action:'degraded', reason}` / `{action:'legacyScrape'}` (reply `{rows:[{text,type}]}`)
 
 - [ ] **Step 1: Write the failing test**
@@ -1446,25 +1476,6 @@ test('emits events to the tab', async () => {
   session.stop();
 });
 
-test('startPolling schedules repeated polls and stop cancels them', async () => {
-  let ticks = 0;
-  const d = deps({
-    fetchImpl: async () => { ticks++; return { ok: true, json: async () => ({}) }; }
-  });
-  const session = createSession({
-    tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298',
-    deps: d, intervalMs: 10
-  });
-  await session.start();
-  session.startPolling();
-  await new Promise(r => setTimeout(r, 55));
-  session.stop();
-  const afterStop = ticks;
-  assert.ok(ticks >= 2, `expected repeated polls, got ${ticks}`);
-  await new Promise(r => setTimeout(r, 40));
-  assert.equal(ticks, afterStop, 'stop must cancel the interval');
-});
-
 test('low importance events are never sent to the tab', async () => {
   const messages = [];
   const d = deps({
@@ -1499,18 +1510,21 @@ Expected: FAIL — module not found.
 
 - [ ] **Step 3: Write `src/session.js`**
 
+No timer here. The session exposes `pump()` for a single poll cycle and is driven
+by messages from the content script (see the MV3 note above). `seed` restores the
+already-seen ids after a worker restart; `seenIds()` hands them back for saving.
+
 ```js
 // src/session.js
 import { detectGame, feedForSport } from './feeds/index.js';
-import { createPoller, DEFAULT_INTERVAL_MS } from './poller.js';
+import { createPoller } from './poller.js';
 import { createDomScrapeFeed, createTabScrapeFetch } from './feeds/dom-scrape.js';
 import { IMPORTANCE } from './events.js';
 
-export function createSession({ tabId, url, deps, intervalMs = DEFAULT_INTERVAL_MS }) {
+export function createSession({ tabId, url, deps, seed = [] }) {
   const detected = detectGame(url);
   let poller = null;
   let degraded = false;
-  let timer = null;
 
   const state = () => ({
     sport: detected ? detected.sport : null,
@@ -1520,29 +1534,32 @@ export function createSession({ tabId, url, deps, intervalMs = DEFAULT_INTERVAL_
   });
 
   // Low importance is suppressed entirely; it never reaches the overlay.
-  function emit(events) {
+  async function emit(events) {
     const shown = events.filter(e => e.importance !== IMPORTANCE.LOW);
     if (shown.length > 0) {
-      deps.sendToTab(tabId, { action: 'events', events: shown });
+      await deps.sendToTab(tabId, { action: 'events', events: shown });
     }
   }
 
   async function switchToDegraded(reason) {
     if (degraded) return;
     degraded = true;
+    // Carry the seen ids across the swap, or the scrape feed replays the game.
+    const carried = poller ? poller.seenIds() : seed;
     if (poller) poller.stop();
-    deps.sendToTab(tabId, { action: 'degraded', reason });
+    await deps.sendToTab(tabId, { action: 'degraded', reason });
     poller = createPoller({
       feed: createDomScrapeFeed(detected.sport),
       eventId: detected.eventId,
       fetchImpl: createTabScrapeFetch(tabId, deps.sendToTab),
       onEvents: emit,
-      intervalMs
+      seed: carried
     });
   }
 
   return {
     state,
+    seenIds: () => (poller ? poller.seenIds() : seed),
     async start() {
       if (!detected) return false;
       poller = createPoller({
@@ -1551,26 +1568,18 @@ export function createSession({ tabId, url, deps, intervalMs = DEFAULT_INTERVAL_
         fetchImpl: deps.fetchImpl,
         onEvents: emit,
         onFailure: (reason) => switchToDegraded(reason),
-        intervalMs
+        seed
       });
       return true;
     },
-    // One poll cycle. When the first tick trips the fallback, the second
-    // drives the freshly-created degraded poller so no cycle is lost.
+    // One poll cycle. When the first tick trips the fallback, the second drives
+    // the freshly-created degraded poller so no cycle is lost.
     async pump() {
       if (!poller) return;
       await poller.tick();
       if (degraded && poller) await poller.tick();
     },
-    // Scheduling is separate from start() so tests can drive pump() by hand
-    // without a live interval. background.js calls both.
-    startPolling() {
-      if (timer) clearInterval(timer);
-      timer = setInterval(() => { this.pump(); }, intervalMs);
-    },
     stop() {
-      if (timer) clearInterval(timer);
-      timer = null;
       if (poller) poller.stop();
       poller = null;
     }
@@ -1578,18 +1587,115 @@ export function createSession({ tabId, url, deps, intervalMs = DEFAULT_INTERVAL_
 }
 ```
 
-- [ ] **Step 4: Run the test to verify it passes**
+- [ ] **Step 3b: Add `seed` support to the ALREADY-COMMITTED `src/poller.js`**
 
-Run: `node --test test/session.test.js`
-Expected: PASS, 6 tests.
+Task 7 shipped `createPoller` without a seed. It needs one now, because a
+restarted service worker rebuilds the session and would otherwise treat every
+prior play as new. Make exactly two changes to `src/poller.js`:
 
-- [ ] **Step 5: Replace `background.js`**
+1. Accept `seed = []` in the options object and initialise the set with it:
+
+```js
+  seed = []
+}) {
+  // Seeded from chrome.storage.session so a terminated-and-restarted service
+  // worker does not treat the whole game as new. See Task 9.
+  const seen = new Set(seed);
+```
+
+2. Expose the ids so the worker can persist them, alongside the existing
+   `seenCount`:
+
+```js
+    seenIds: () => Array.from(seen),
+```
+
+Change nothing else in that file — the single-pass filter-and-mark, the awaited
+`onEvents`, and the post-await `stopped` re-check are all load-bearing and were
+each added to fix a specific defect.
+
+- [ ] **Step 4: Add the seed test to `test/poller.test.js`**
+
+```js
+test('a seeded poller does not re-emit ids it was told were already seen', async () => {
+  const feed = feedReturning([[{ id: 'a' }, { id: 'b' }, { id: 'c' }]]);
+  const seen = [];
+  const poller = createPoller({
+    feed, eventId: '1', fetchImpl: okFetch, seed: ['a', 'b'],
+    onEvents: (evts) => seen.push(...evts.map(e => e.id))
+  });
+  await poller.tick();
+  assert.deepEqual(seen, ['c'], 'a restarted worker must not replay the game');
+  assert.deepEqual(poller.seenIds().sort(), ['a', 'b', 'c']);
+});
+```
+
+Run: `node --test test/poller.test.js`
+Expected: PASS, 8 tests.
+
+- [ ] **Step 5: Add the lifecycle tests to `test/session.test.js`**
+
+The session no longer owns a timer, so these assert that pumping drives polling
+and that a seeded rebuild does not replay the game:
+
+```js
+test('each pump performs one poll cycle', async () => {
+  let ticks = 0;
+  const d = deps({
+    fetchImpl: async () => { ticks++; return { ok: true, json: async () => ({}) }; }
+  });
+  const session = createSession({
+    tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298', deps: d
+  });
+  await session.start();
+  await session.pump();
+  await session.pump();
+  assert.equal(ticks, 2);
+  session.stop();
+  await session.pump();
+  assert.equal(ticks, 2, 'a stopped session must not poll');
+});
+
+test('a rebuilt session seeded with prior ids does not replay them', async () => {
+  const messages = [];
+  const d = deps({
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ drives: { previous: [{ plays: [
+        { id: '1', text: 'Sack', type: { text: 'Sack' } },
+        { id: '2', text: 'Interception', type: { text: 'Pass Interception Return' } }
+      ] }] } })
+    }),
+    sendToTab: async (tabId, msg) => { messages.push(msg); return {}; }
+  });
+  const session = createSession({
+    tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298',
+    deps: d, seed: ['1']
+  });
+  await session.start();
+  await session.pump();
+  const evt = messages.find(m => m.action === 'events');
+  assert.equal(evt.events.length, 1);
+  assert.equal(evt.events[0].id, '2');
+  session.stop();
+});
+```
+
+- [ ] **Step 5b: Replace `background.js`**
 
 ```js
 // background.js — service worker (ES module; manifest sets "type": "module")
 import { createSession } from './src/session.js';
 
-const sessions = new Map(); // tabId -> session
+const sessions = new Map(); // tabId -> session (lost if the worker restarts)
+
+const seenKey = (tabId) => `seen-${tabId}`;
+
+// chrome.storage.session is in-memory and cleared when the browser session ends,
+// but it SURVIVES a service worker restart — which the in-memory Map does not.
+const storageGet = (keys) => new Promise((r) => chrome.storage.session.get(keys, r));
+const storageSet = (items) => new Promise((r) => chrome.storage.session.set(items, r));
+const storageRemove = (keys) => new Promise((r) => chrome.storage.session.remove(keys, r));
 
 function sendToTab(tabId, message) {
   return new Promise((resolve) => {
@@ -1610,6 +1716,31 @@ function stopSession(tabId) {
   }
 }
 
+// Rebuilds the session if the worker was terminated since the last message,
+// seeding it with the ids already shown so the game is not replayed.
+async function ensureSession(tabId, url) {
+  const existing = sessions.get(tabId);
+  if (existing) return existing;
+
+  const stored = await storageGet([seenKey(tabId)]);
+  const seed = stored[seenKey(tabId)] || [];
+  const session = createSession({
+    tabId,
+    url,
+    deps: { fetchImpl: (u) => fetch(u), sendToTab },
+    seed
+  });
+  const started = await session.start();
+  if (!started) return null;
+  sessions.set(tabId, session);
+  return session;
+}
+
+async function pumpAndSave(session, tabId) {
+  await session.pump();
+  await storageSet({ [seenKey(tabId)]: session.seenIds() });
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   const tabId = sender.tab ? sender.tab.id : request.tabId;
   if (typeof tabId !== 'number') {
@@ -1619,26 +1750,33 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   if (request.action === 'start') {
     stopSession(tabId);
-    const session = createSession({
-      tabId,
-      url: request.url,
-      deps: { fetchImpl: (u) => fetch(u), sendToTab }
-    });
-    session.start().then((started) => {
-      if (started) {
-        sessions.set(tabId, session);
-        session.pump();
-        session.startPolling();
+    storageRemove([seenKey(tabId)])
+      .then(() => ensureSession(tabId, request.url))
+      .then(async (session) => {
+        if (session) await pumpAndSave(session, tabId);
+        sendResponse({ ok: Boolean(session), state: session ? session.state() : null });
+      });
+    return true;
+  }
+
+  // The content script owns the clock and beats every 10s. Each beat both
+  // drives one poll cycle and resets this worker's 30s idle timer.
+  if (request.action === 'poll') {
+    ensureSession(tabId, request.url).then(async (session) => {
+      if (!session) {
+        sendResponse({ ok: false, reason: 'not-a-game' });
+        return;
       }
-      sendResponse({ ok: started, state: session.state() });
+      await pumpAndSave(session, tabId);
+      sendResponse({ ok: true, state: session.state() });
     });
     return true;
   }
 
   if (request.action === 'stop') {
     stopSession(tabId);
-    sendResponse({ ok: true });
-    return false;
+    storageRemove([seenKey(tabId)]).then(() => sendResponse({ ok: true }));
+    return true;
   }
 
   if (request.action === 'getStatus') {
@@ -1650,7 +1788,10 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   return false;
 });
 
-chrome.tabs.onRemoved.addListener(stopSession);
+chrome.tabs.onRemoved.addListener((tabId) => {
+  stopSession(tabId);
+  chrome.storage.session.remove(seenKey(tabId));
+});
 ```
 
 - [ ] **Step 6: Run the whole suite**
@@ -1768,21 +1909,64 @@ Wrap the existing DOM-reading helpers so they return rows instead of calling `ad
   }
 ```
 
-- [ ] **Step 5: Replace the toggle path to talk to the background**
+- [ ] **Step 5: Replace the toggle path, and take ownership of the poll clock**
+
+The content script owns the 10-second cadence, not the service worker. Chrome
+terminates an MV3 service worker after 30 seconds of inactivity and a
+`setInterval` there does not keep it alive — the worker would die and polling
+would silently stop. This script lives as long as the page, so it beats the
+clock and each beat also resets the worker's idle timer.
 
 ```js
+  POLL_INTERVAL_MS = 10000;
+
   toggle() {
     this.isActive = !this.isActive;
-    const action = this.isActive ? 'start' : 'stop';
-    chrome.runtime.sendMessage({ action, url: window.location.href }, (reply) => {
-      void chrome.runtime.lastError;
-      if (this.isActive && (!reply || !reply.ok)) {
-        this.isActive = false;
-        this.addEvent('System', 'This page is not a supported live game.');
+    if (this.isActive) {
+      this.startPolling();
+    } else {
+      this.stopPolling();
+    }
+  }
+
+  startPolling() {
+    chrome.runtime.sendMessage(
+      { action: 'start', url: window.location.href },
+      (reply) => {
+        void chrome.runtime.lastError;
+        if (!reply || !reply.ok) {
+          this.isActive = false;
+          this.addEvent('System', 'This page is not a supported live game.');
+          return;
+        }
+        this.stopPollTimer();
+        // Each beat drives one poll cycle in the worker AND resets its 30s
+        // idle timer, which is what keeps the worker alive while monitoring.
+        this.pollTimer = setInterval(() => {
+          chrome.runtime.sendMessage(
+            { action: 'poll', url: window.location.href },
+            () => { void chrome.runtime.lastError; }
+          );
+        }, this.POLL_INTERVAL_MS);
       }
+    );
+  }
+
+  stopPollTimer() {
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollTimer = null;
+  }
+
+  stopPolling() {
+    this.stopPollTimer();
+    chrome.runtime.sendMessage({ action: 'stop' }, () => {
+      void chrome.runtime.lastError;
     });
   }
 ```
+
+Also call `this.stopPollTimer()` from the existing `cleanup()` method so a
+navigation away does not leave a timer beating at a torn-down worker.
 
 - [ ] **Step 6: Preserve the popup status contract**
 
