@@ -115,3 +115,15 @@ test('a tick in flight when stop is called emits nothing', async () => {
 
   assert.deepEqual(emitted, [], 'in-flight tick after stop must not emit');
 });
+
+test('a seeded poller does not re-emit ids it was told were already seen', async () => {
+  const feed = feedReturning([[{ id: 'a' }, { id: 'b' }, { id: 'c' }]]);
+  const seen = [];
+  const poller = createPoller({
+    feed, eventId: '1', fetchImpl: okFetch, seed: ['a', 'b'],
+    onEvents: (evts) => seen.push(...evts.map(e => e.id))
+  });
+  await poller.tick();
+  assert.deepEqual(seen, ['c'], 'a restarted worker must not replay the game');
+  assert.deepEqual(poller.seenIds().sort(), ['a', 'b', 'c']);
+});

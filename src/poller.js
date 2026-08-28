@@ -8,9 +8,12 @@ export function createPoller({
   onEvents,
   onFailure = () => {},
   fetchImpl = fetch,
-  intervalMs = DEFAULT_INTERVAL_MS
+  intervalMs = DEFAULT_INTERVAL_MS,
+  seed = []
 }) {
-  const seen = new Set();
+  // Seeded from chrome.storage.session so a terminated-and-restarted service
+  // worker does not treat the whole game as new. See Task 9.
+  const seen = new Set(seed);
   let timer = null;
   let stopped = false;
 
@@ -41,6 +44,7 @@ export function createPoller({
   return {
     tick,
     seenCount: () => seen.size,
+    seenIds: () => Array.from(seen),
     start() {
       stopped = false;
       tick();
