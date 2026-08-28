@@ -9,10 +9,8 @@ class PlaySense {
       this.eventLog = [];
       this.overlay = null;
       this.checkInterval = null;
-      this.previousGameState = {};
       this.errorCount = 0;
       this.maxErrors = 10;
-      this.retryCount = 0;
       this.maxRetries = 3;
       this.initRetryCount = 0;
       this.maxInitRetries = 5;
@@ -155,6 +153,9 @@ class PlaySense {
   rememberSport(events) {
     const withSport = events.find(e => e.sport);
     if (withSport) this.gameType = withSport.sport;
+
+    const labelEl = document.getElementById('playsense-sport-label');
+    if (labelEl && this.gameType) labelEl.textContent = this.gameType.toUpperCase();
   }
 
   handleStatusRequest(sendResponse) {
@@ -212,8 +213,6 @@ class PlaySense {
       this.stopPollTimer();
       this.cleanup();
       this.errorCount = 0;
-      this.retryCount = 0;
-      this.previousGameState = {};
       this.eventLog = [];
       this.isInitialized = false;
       this.addEvent('System', 'Extension reset due to errors');
