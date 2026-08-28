@@ -1185,7 +1185,7 @@ export function createPoller({
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `node --test test/poller.test.js`
-Expected: PASS, 5 tests.
+Expected: PASS, 6 tests.
 
 - [ ] **Step 5: Commit**
 
