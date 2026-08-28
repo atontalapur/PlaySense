@@ -18,7 +18,8 @@
     "https://www.espn.com/*",
     "https://espn.com/*",
     "https://site.api.espn.com/*",
-    "https://api.openf1.org/*"
+    "https://api.openf1.org/*",
+    "https://api.anthropic.com/*"
   ],
   "content_scripts": [
     {

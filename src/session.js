@@ -18,9 +18,19 @@ export function createSession({ tabId, url, deps, seed = [] }) {
   // Low importance is suppressed entirely; it never reaches the overlay.
   async function emit(events) {
     const shown = events.filter(e => e.importance !== IMPORTANCE.LOW);
-    if (shown.length > 0) {
-      await deps.sendToTab(tabId, { action: 'events', events: shown });
+    if (shown.length === 0) return;
+
+    const explained = [];
+    for (const event of shown) {
+      // Stop halts the REMAINING backlog. The first pump of a live game can
+      // carry ~32 high-importance events, each a multi-second paid call; a user
+      // who stops monitoring partway must not be billed for the rest of the loop.
+      if (!poller) break;
+      const explanation = deps.explainer ? await deps.explainer.explain(event) : null;
+      explained.push({ ...event, explanation });
     }
+    if (explained.length === 0) return;
+    await deps.sendToTab(tabId, { action: 'events', events: explained });
   }
 
   async function switchToDegraded(reason) {
@@ -34,7 +44,7 @@ export function createSession({ tabId, url, deps, seed = [] }) {
       feed: createDomScrapeFeed(detected.sport),
       eventId: detected.eventId,
       fetchImpl: createTabScrapeFetch(tabId, deps.sendToTab),
-      onEvents: emit,
+      onEvents: (evts) => { emit(evts); },
       seed: carried
     });
   }
@@ -48,7 +58,7 @@ export function createSession({ tabId, url, deps, seed = [] }) {
         feed: feedForSport(detected.sport),
         eventId: detected.eventId,
         fetchImpl: deps.fetchImpl,
-        onEvents: emit,
+        onEvents: (evts) => { emit(evts); },
         onFailure: (reason) => switchToDegraded(reason),
         seed
       });

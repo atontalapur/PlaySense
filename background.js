@@ -1,6 +1,7 @@
 // background.js — service worker (ES module; manifest sets "type": "module")
 import { createSession } from './src/session.js';
 import { once } from './src/once.js';
+import { RuleExplainer, createClaudeExplainer, createExplainerChain } from './src/explainers/index.js';
 
 const sessions = new Map(); // tabId -> session (lost if the worker restarts)
 // tabId -> in-flight session-construction promise. Guards against two
@@ -11,6 +12,22 @@ const sessions = new Map(); // tabId -> session (lost if the worker restarts)
 const inFlight = new Map();
 
 const seenKey = (tabId) => `seen-${tabId}`;
+
+const localStorageGet = (keys) => new Promise((resolve) => chrome.storage.local.get(keys, resolve));
+const localStorageSet = (items) => new Promise((resolve) => chrome.storage.local.set(items, resolve));
+
+// Built per tab inside ensureSession, so isCancelled can be bound to THIS
+// tab's liveness. stopSession deletes the map entry, so an in-flight call is
+// cancelled the moment the user stops monitoring.
+function buildExplainer(tabId) {
+  const claude = createClaudeExplainer({
+    getKey: async () => (await localStorageGet(['anthropicApiKey'])).anthropicApiKey || null,
+    getBudget: async () => (await localStorageGet(['claudeBudget'])).claudeBudget || null,
+    setBudget: async (budget) => localStorageSet({ claudeBudget: budget }),
+    isCancelled: () => !sessions.has(tabId)
+  });
+  return createExplainerChain([claude, RuleExplainer]);
+}
 
 // chrome.storage.session is in-memory and cleared when the browser session ends,
 // but it SURVIVES a service worker restart — which the in-memory Map does not.
@@ -57,7 +74,7 @@ async function ensureSession(tabId, url) {
     const session = createSession({
       tabId,
       url,
-      deps: { fetchImpl: (u) => fetch(u), sendToTab },
+      deps: { fetchImpl: (u) => fetch(u), sendToTab, explainer: buildExplainer(tabId) },
       seed
     });
     const started = await session.start();
