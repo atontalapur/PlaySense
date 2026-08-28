@@ -154,6 +154,29 @@ test('a whitespace-only response falls through to null instead of an empty expla
     })
   });
   assert.equal(await h.explainer.explain(highEvent), null);
+  assert.equal(h.budget().count, 1, 'a 200 was billed even though the trimmed text was too short — the reservation must stay');
+});
+
+test('malformed JSON on a billed 200 still counts against the cap', async () => {
+  const h = harness({
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => { throw new Error('unexpected token'); }
+    })
+  });
+  assert.equal(await h.explainer.explain(highEvent), null);
+  assert.equal(h.budget().count, 1, 'Anthropic billed this 200 regardless of whether the body parsed as JSON');
+});
+
+test('a missing or non-string text block on a billed 200 still counts against the cap', async () => {
+  const h = harness({
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ content: [{ type: 'image' }] })
+    })
+  });
+  assert.equal(await h.explainer.explain(highEvent), null);
+  assert.equal(h.budget().count, 1, 'Anthropic billed this 200 regardless of whether a usable text block came back');
 });
 
 test('N concurrent explains record exactly N against the daily budget', async () => {

@@ -164,7 +164,11 @@ export function createClaudeExplainer({
       try {
         json = await response.json();
       } catch {
-        count -= 1;
+        // The response was a billed 200 even though the body could not be
+        // parsed as JSON — do not release the reservation. Persist it so
+        // the cap reflects the call Anthropic actually charged for, and
+        // fall back to the rules tier since we have no usable answer.
+        await setBudget({ day: today, count });
         return null;
       }
 
@@ -172,13 +176,19 @@ export function createClaudeExplainer({
         ? json.content.find(b => b.type === 'text')
         : null;
       if (!block || typeof block.text !== 'string') {
-        count -= 1;
+        // Billed 200 with no usable text block — same reasoning as above:
+        // the call was charged regardless of whether the body was usable,
+        // so keep the reservation and just fall back to the rules tier.
+        await setBudget({ day: today, count });
         return null;
       }
 
       const trimmed = block.text.trim();
       if (trimmed.length < MIN_EXPLANATION_LENGTH) {
-        count -= 1;
+        // Billed 200 with a too-short answer — again, a 200 was billed
+        // regardless of whether the body was usable, so keep the
+        // reservation and fall back to the rules tier.
+        await setBudget({ day: today, count });
         return null;
       }
 
