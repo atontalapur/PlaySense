@@ -1,0 +1,65 @@
+// test/espn-nfl.test.js
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { parseNflSummary, EspnNflFeed } from '../src/feeds/espn-nfl.js';
+import { IMPORTANCE } from '../src/events.js';
+
+const fixture = JSON.parse(readFileSync(new URL('./fixtures/nfl-summary.json', import.meta.url)));
+
+test('parses every play from both current and previous drives', () => {
+  const events = parseNflSummary(fixture);
+  assert.ok(events.length > 100, `expected >100 plays, got ${events.length}`);
+});
+
+test('every event has a stable non-empty id and no duplicates', () => {
+  const events = parseNflSummary(fixture);
+  const ids = events.map(e => e.id);
+  assert.ok(ids.every(id => typeof id === 'string' && id.length > 0));
+  assert.equal(new Set(ids).size, ids.length, 'ids must be unique');
+});
+
+test('the in-progress drive is not double-counted', () => {
+  // ESPN repeats the current drive's plays inside drives.previous. The raw
+  // flattened count is higher than the distinct count; parse must collapse it.
+  const raw = (fixture.drives.previous || []).reduce((n, d) => n + (d.plays || []).length, 0)
+    + ((fixture.drives.current && fixture.drives.current.plays) || []).length;
+  const events = parseNflSummary(fixture);
+  assert.ok(events.length < raw, `expected dedup: raw ${raw}, parsed ${events.length}`);
+  assert.equal(events.length, new Set(events.map(e => e.id)).size);
+});
+
+test('scoring plays are detected and marked high importance', () => {
+  const events = parseNflSummary(fixture);
+  const scoring = events.filter(e => e.isScoring);
+  assert.ok(scoring.length >= 4, `expected >=4 scoring plays, got ${scoring.length}`);
+  assert.ok(scoring.every(e => e.importance === IMPORTANCE.HIGH));
+});
+
+test('play text and type are preserved verbatim from the feed', () => {
+  const events = parseNflSummary(fixture);
+  const withText = events.filter(e => e.text.length > 0);
+  assert.ok(withText.length > 100);
+  assert.ok(events.some(e => e.type === 'Rush'));
+});
+
+test('events carry period, clock and score', () => {
+  const events = parseNflSummary(fixture);
+  const e = events.find(x => x.type === 'Rush');
+  assert.equal(e.sport, 'nfl');
+  assert.equal(typeof e.period.number, 'number');
+  assert.ok(e.score && typeof e.score.home === 'number');
+});
+
+test('malformed input returns an empty array rather than throwing', () => {
+  assert.deepEqual(parseNflSummary(null), []);
+  assert.deepEqual(parseNflSummary({}), []);
+  assert.deepEqual(parseNflSummary({ drives: {} }), []);
+});
+
+test('feed builds the correct endpoint url', () => {
+  assert.equal(
+    EspnNflFeed.url('401873298'),
+    'https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary?event=401873298'
+  );
+});
