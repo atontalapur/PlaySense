@@ -1,7 +1,9 @@
 // background.js — service worker (ES module; manifest sets "type": "module")
 import { createSession } from './src/session.js';
 import { once } from './src/once.js';
-import { RuleExplainer, createClaudeExplainer, createExplainerChain } from './src/explainers/index.js';
+import {
+  RuleExplainer, createClaudeExplainer, createDailyBudget, createExplainerChain
+} from './src/explainers/index.js';
 
 const sessions = new Map(); // tabId -> session (lost if the worker restarts)
 // tabId -> in-flight session-construction promise. Guards against two
@@ -16,14 +18,22 @@ const seenKey = (tabId) => `seen-${tabId}`;
 const localStorageGet = (keys) => new Promise((resolve) => chrome.storage.local.get(keys, resolve));
 const localStorageSet = (items) => new Promise((resolve) => chrome.storage.local.set(items, resolve));
 
+// One ledger for the whole worker. DAILY_CALL_CAP is a per-install spending
+// limit, so it must not follow the per-tab explainer lifetime below: two tabs
+// each holding their own counter would spend 2x the cap and overwrite each
+// other's stored count.
+const claudeBudget = createDailyBudget({
+  getBudget: async () => (await localStorageGet(['claudeBudget'])).claudeBudget || null,
+  setBudget: async (budget) => localStorageSet({ claudeBudget: budget })
+});
+
 // Built per tab inside ensureSession, so isCancelled can be bound to THIS
 // tab's liveness. stopSession deletes the map entry, so an in-flight call is
 // cancelled the moment the user stops monitoring.
 function buildExplainer(tabId) {
   const claude = createClaudeExplainer({
     getKey: async () => (await localStorageGet(['anthropicApiKey'])).anthropicApiKey || null,
-    getBudget: async () => (await localStorageGet(['claudeBudget'])).claudeBudget || null,
-    setBudget: async (budget) => localStorageSet({ claudeBudget: budget }),
+    budget: claudeBudget,
     isCancelled: () => !sessions.has(tabId)
   });
   return createExplainerChain([claude, RuleExplainer]);

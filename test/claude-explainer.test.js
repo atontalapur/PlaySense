@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createClaudeExplainer, buildPrompt, DAILY_CALL_CAP } from '../src/explainers/claude.js';
+import { createClaudeExplainer, createDailyBudget, buildPrompt, DAILY_CALL_CAP } from '../src/explainers/claude.js';
 import { IMPORTANCE } from '../src/events.js';
 
 function harness(overrides = {}) {
@@ -215,4 +215,37 @@ test('a cancellation flipping after a successful response still counts the bille
   assert.equal(out, null, 'the discarded answer must not be returned');
   assert.equal(fetchCount, 1, 'the API was actually called and billed');
   assert.equal(h.budget().count, 1, 'a call Anthropic already billed must still count against the cap, even though the answer was discarded');
+});
+
+// background.js builds one explainer per tab so isCancelled can be bound to
+// that tab's liveness. The budget must NOT follow that per-tab lifetime: two
+// tabs seeding from the same empty ledger before either persists would each get
+// a full DAILY_CALL_CAP, and their writes would clobber each other's count.
+test('two explainer handles share one daily budget', async () => {
+  let stored = null;
+  let apiCalls = 0;
+  const budget = createDailyBudget({
+    getBudget: async () => stored,
+    setBudget: async (b) => { stored = b; }
+  });
+  const tab = () => createClaudeExplainer({
+    getKey: async () => 'sk-ant-test',
+    budget,
+    now: () => new Date('2026-08-27T12:00:00Z'),
+    fetchImpl: async () => {
+      apiCalls += 1;
+      return { ok: true, json: async () => ({ content: [{ type: 'text', text: 'An explanation.' }] }) };
+    }
+  });
+
+  const a = tab();
+  const b = tab();
+  // Interleaved, and started before either has persisted anything — the case
+  // that reproduced 999 calls against a cap of 500.
+  for (let i = 0; i < DAILY_CALL_CAP; i++) {
+    await Promise.all([a.explain(highEvent), b.explain(highEvent)]);
+  }
+
+  assert.equal(apiCalls, DAILY_CALL_CAP, 'the cap covers both handles in total');
+  assert.deepEqual(stored, { day: '2026-08-27', count: DAILY_CALL_CAP });
 });

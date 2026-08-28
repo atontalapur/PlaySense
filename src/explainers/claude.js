@@ -61,33 +61,60 @@ function dayKey(date) {
   return date.toISOString().slice(0, 10);
 }
 
-export function createClaudeExplainer({
-  getKey, getBudget, setBudget, fetchImpl = fetch, now = () => new Date(),
-  isCancelled = () => false
-}) {
+// The cap is per install, not per tab. background.js still builds one explainer
+// per tab (so isCancelled can be bound to that tab's liveness), but they must
+// all spend from one of these, constructed once at module scope. Two per-tab
+// ledgers seeded before either persisted would each grant a full
+// DAILY_CALL_CAP and then clobber each other's stored count.
+export function createDailyBudget({ getBudget, setBudget }) {
   // The daily call count is cached here, not only read from storage, so the
-  // cap check and the reservation increment below can happen synchronously
-  // (no await between them). The service worker is single-threaded, so a
-  // synchronous check-then-increment is atomic there even when several
-  // explain() calls race — awaiting storage for every call is not.
+  // cap check and the reservation increment in reserve() can happen
+  // synchronously (no await between them). The service worker is
+  // single-threaded, so a synchronous check-then-increment is atomic there
+  // even when several explain() calls race — awaiting storage for every call
+  // is not.
   let seededDay = null;
   let count = 0;
   let seedingPromise = null;
 
-  async function ensureSeeded(today) {
-    if (seededDay === today) return;
-    if (!seedingPromise || seedingPromise.day !== today) {
-      const promise = (async () => {
-        const budget = (await getBudget()) || { day: today, count: 0 };
-        count = budget.day === today ? budget.count : 0;
-        seededDay = today;
-      })();
-      promise.day = today;
-      seedingPromise = promise;
-    }
-    await seedingPromise;
-  }
+  return {
+    // Re-seed from storage on first use, or when the stored day has rolled
+    // over. A worker restart also re-seeds, since seededDay starts null on a
+    // fresh instance.
+    async ensureSeeded(today) {
+      if (seededDay === today) return;
+      if (!seedingPromise || seedingPromise.day !== today) {
+        const promise = (async () => {
+          const budget = (await getBudget()) || { day: today, count: 0 };
+          count = budget.day === today ? budget.count : 0;
+          seededDay = today;
+        })();
+        promise.day = today;
+        seedingPromise = promise;
+      }
+      await seedingPromise;
+    },
+    // Synchronous by contract: callers must not put an await between the cap
+    // check and the increment, or a concurrent explain() would pass the check
+    // against the same stale count.
+    reserve() {
+      if (count >= DAILY_CALL_CAP) return false;
+      count += 1;
+      return true;
+    },
+    release() {
+      count -= 1;
+    },
+    persist: (today) => setBudget({ day: today, count })
+  };
+}
 
+export function createClaudeExplainer({
+  getKey, getBudget, setBudget,
+  budget = createDailyBudget({ getBudget, setBudget }),
+  fetchImpl = fetch, now = () => new Date(),
+  isCancelled = () => false
+}) {
   return {
     name: 'claude',
     async explain(event) {
@@ -102,20 +129,14 @@ export function createClaudeExplainer({
       if (!key) return null;
 
       const today = dayKey(now());
-      // Re-seed the in-memory counter from storage on first use, or when
-      // the stored day has rolled over. A worker restart also re-seeds,
-      // since seededDay starts null on a fresh instance.
-      await ensureSeeded(today);
+      await budget.ensureSeeded(today);
 
-      if (count >= DAILY_CALL_CAP) return null;
-
-      // Reserve the slot synchronously — no await between the cap check
-      // above and this increment — so a concurrent explain() cannot also
-      // pass the cap check against the same stale count.
-      count += 1;
+      // Checks the cap and reserves the slot in one synchronous step. Nothing
+      // may be awaited between those two halves.
+      if (!budget.reserve()) return null;
 
       if (isCancelled()) {
-        count -= 1;
+        budget.release();
         return null;
       }
 
@@ -139,13 +160,14 @@ export function createClaudeExplainer({
           })
         });
       } catch {
-        count -= 1;
+        // The request never reached Anthropic, so nothing was billed.
+        budget.release();
         return null;
       }
 
       if (!response.ok) {
         // Anthropic did not bill a rejected call — release the reservation.
-        count -= 1;
+        budget.release();
         return null;
       }
 
@@ -156,7 +178,7 @@ export function createClaudeExplainer({
       // We still persist the (unreleased) reservation and discard the
       // answer, letting the rules tier respond instead.
       if (isCancelled()) {
-        await setBudget({ day: today, count });
+        await budget.persist(today);
         return null;
       }
 
@@ -168,7 +190,7 @@ export function createClaudeExplainer({
         // parsed as JSON — do not release the reservation. Persist it so
         // the cap reflects the call Anthropic actually charged for, and
         // fall back to the rules tier since we have no usable answer.
-        await setBudget({ day: today, count });
+        await budget.persist(today);
         return null;
       }
 
@@ -179,7 +201,7 @@ export function createClaudeExplainer({
         // Billed 200 with no usable text block — same reasoning as above:
         // the call was charged regardless of whether the body was usable,
         // so keep the reservation and just fall back to the rules tier.
-        await setBudget({ day: today, count });
+        await budget.persist(today);
         return null;
       }
 
@@ -188,11 +210,11 @@ export function createClaudeExplainer({
         // Billed 200 with a too-short answer — again, a 200 was billed
         // regardless of whether the body was usable, so keep the
         // reservation and fall back to the rules tier.
-        await setBudget({ day: today, count });
+        await budget.persist(today);
         return null;
       }
 
-      await setBudget({ day: today, count });
+      await budget.persist(today);
       return trimmed;
     }
   };
