@@ -13,8 +13,11 @@ export function parseRaceControl(json) {
   // it collides 16 times in the recorded fixture — so the index is
   // load-bearing for id uniqueness.
   // The index i is taken from the ORIGINAL array, before the guard drops
-  // anything, so ids stay stable across polls even if a malformed entry
-  // appears or disappears between them.
+  // anything, so a malformed entry does not shift the ids of the entries
+  // after it within a parse. That is the limit of the guarantee: if OpenF1
+  // ever removes an entry outright between polls, every later id shifts and
+  // those messages replay. Index-based ids carry that risk inherently — the
+  // guard neither adds to it nor removes it.
   return json
     .map((m, i) => (m && typeof m === 'object' ? { m, i } : null))
     .filter(Boolean)

@@ -35,9 +35,21 @@ export function parseMlbSummary(json) {
     );
 }
 
+// Raw rows before parseMlbSummary's `type.text === 'Play Result'` filter. That
+// filter is correct — the other rows are pitch-level, with text like
+// "Pitch 1 : Ball In Play" rather than a narrative — but it keeps only 84 of
+// 541 rows in the recorded fixture, and none at all until the first at-bat
+// completes. Counting parsed events as "empty" would degrade every MLB game
+// within 30 seconds of first pitch.
+export function countMlbRows(json) {
+  if (!json || typeof json !== 'object') return 0;
+  return Array.isArray(json.plays) ? json.plays.length : 0;
+}
+
 export const EspnMlbFeed = {
   sport: 'mlb',
   url: (eventId) => `${BASE}?event=${encodeURIComponent(eventId)}`,
   parse: parseMlbSummary,
-  gameState: espnGameState
+  gameState: espnGameState,
+  rowCount: countMlbRows
 };

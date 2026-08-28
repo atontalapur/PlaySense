@@ -191,3 +191,104 @@ test('a finished game stops the session and notifies the tab', async () => {
   assert.equal(session.state().finished, true);
   assert.equal(session.state().active, false, 'a finished session must not keep polling');
 });
+
+// N3 regression: switchToFinished nulls the poller, and emit()'s backlog guard
+// used to read `!poller`. A second beat that lands while an earlier emit is
+// still awaiting explainer calls finishes the game and nulls the poller, so the
+// first emit truncated final plays whose ids tick() had already marked seen —
+// losing them permanently, since the ids never come back as fresh.
+test('finishing mid-backlog does not truncate the plays already marked seen', async () => {
+  const plays = Array.from({ length: 6 }, (_, i) => ({
+    id: `p${i}`,
+    type: { text: 'Touchdown' },
+    text: `Touchdown number ${i}`,
+    scoringPlay: true,
+    period: { number: 4 },
+    clock: { displayValue: '0:10' },
+    homeScore: 7 * i,
+    awayScore: 0
+  }));
+  const summary = {
+    header: { competitions: [{ status: { type: { state: 'post' } } }] },
+    drives: { previous: [{ plays }] }
+  };
+
+  const delivered = [];
+  let release;
+  const gate = new Promise((r) => { release = r; });
+  let firstCall = true;
+
+  const d = deps({
+    fetchImpl: async () => ({ ok: true, json: async () => summary }),
+    sendToTab: async (tabId, msg) => {
+      if (msg.action === 'events') delivered.push(...msg.events.map(e => e.id));
+      return { rows: [] };
+    },
+    explainer: {
+      // Hold the first explanation open so the emit loop is still in flight
+      // when the second beat lands and finishes the game.
+      async explain() {
+        if (firstCall) { firstCall = false; await gate; }
+        return 'explained';
+      }
+    }
+  });
+
+  const session = createSession({
+    tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298', deps: d
+  });
+  await session.start();
+
+  // Beat one stalls inside emit. Beat two sees every id already marked seen,
+  // emits nothing, reads state 'post' and finishes the session out from under
+  // the first beat.
+  const first = session.pump();
+  for (let i = 0; i < 5; i += 1) await Promise.resolve();
+  const second = session.pump();
+  await second;
+  assert.equal(session.state().finished, true, 'the second beat should finish the game');
+
+  release();
+  await first;
+
+  assert.deepEqual(delivered, ['p0', 'p1', 'p2', 'p3', 'p4', 'p5']);
+});
+
+test('stop still halts the remaining backlog', async () => {
+  const plays = Array.from({ length: 4 }, (_, i) => ({
+    id: `s${i}`,
+    type: { text: 'Touchdown' },
+    text: `Touchdown number ${i}`,
+    scoringPlay: true,
+    period: { number: 2 },
+    clock: { displayValue: '5:00' },
+    homeScore: 7 * i,
+    awayScore: 0
+  }));
+  const summary = { drives: { previous: [{ plays }] } };
+
+  const delivered = [];
+  let session;
+  const d = deps({
+    fetchImpl: async () => ({ ok: true, json: async () => summary }),
+    sendToTab: async (tabId, msg) => {
+      if (msg.action === 'events') delivered.push(...msg.events.map(e => e.id));
+      return { rows: [] };
+    },
+    explainer: {
+      async explain() {
+        // The user stops monitoring partway through the paid backlog.
+        session.stop();
+        return 'explained';
+      }
+    }
+  });
+
+  session = createSession({
+    tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298', deps: d
+  });
+  await session.start();
+  await session.pump();
+
+  assert.deepEqual(delivered, ['s0'], 'only the play explained before stop is delivered');
+});

@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createPoller, EMPTY_POLLS_BEFORE_DEGRADE } from '../src/poller.js';
+import {
+  createPoller, EMPTY_POLLS_BEFORE_DEGRADE, UNPARSED_POLLS_BEFORE_DEGRADE
+} from '../src/poller.js';
 
 function feedReturning(batches) {
   let i = 0;
@@ -213,4 +215,66 @@ test('a finished game reports onFinished and stops polling', async () => {
   await poller.tick();
   assert.equal(parses, 1, 'a finished poller must not fetch again');
   assert.equal(finished, 1);
+});
+
+test('rows present but none parsed does not degrade at the empty threshold', async () => {
+  // The MLB shape: the feed returns plenty of rows, but the parser keeps only
+  // narrative 'Play Result' rows and the opening at-bat has produced none yet.
+  const feed = {
+    sport: 'mlb',
+    url: () => 'https://example.test/x',
+    parse: () => [],
+    rowCount: () => 120,
+    gameState: () => 'in'
+  };
+  const failures = [];
+  const poller = createPoller({
+    feed, eventId: '1', fetchImpl: okFetch,
+    onEvents: () => {},
+    onFailure: (reason) => failures.push(reason)
+  });
+
+  for (let i = 0; i < EMPTY_POLLS_BEFORE_DEGRADE + 2; i += 1) await poller.tick();
+
+  assert.deepEqual(failures, []);
+});
+
+test('a feed whose rows have vanished degrades at the empty threshold', async () => {
+  const feed = {
+    sport: 'mlb',
+    url: () => 'https://example.test/x',
+    parse: () => [],
+    rowCount: () => 0,
+    gameState: () => 'in'
+  };
+  const failures = [];
+  const poller = createPoller({
+    feed, eventId: '1', fetchImpl: okFetch,
+    onEvents: () => {},
+    onFailure: (reason) => failures.push(reason)
+  });
+
+  for (let i = 0; i < EMPTY_POLLS_BEFORE_DEGRADE; i += 1) await poller.tick();
+
+  assert.deepEqual(failures, ['empty-feed']);
+});
+
+test('rows that never parse eventually degrade, at the longer threshold', async () => {
+  const feed = {
+    sport: 'mlb',
+    url: () => 'https://example.test/x',
+    parse: () => [],
+    rowCount: () => 120,
+    gameState: () => 'in'
+  };
+  const failures = [];
+  const poller = createPoller({
+    feed, eventId: '1', fetchImpl: okFetch,
+    onEvents: () => {},
+    onFailure: (reason) => failures.push(reason)
+  });
+
+  for (let i = 0; i < UNPARSED_POLLS_BEFORE_DEGRADE; i += 1) await poller.tick();
+
+  assert.deepEqual(failures, ['unparsed-feed']);
 });

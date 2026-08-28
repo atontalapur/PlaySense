@@ -103,5 +103,15 @@ export async function fetchEvents(feed, eventId, fetchImpl = fetch) {
     state = null;
   }
 
-  return { ok: true, events, reason: null, state };
+  // Same containment as gameState: an unusable rowCount must not discard good
+  // events. `null` means unknown, and the poller falls back to counting parsed
+  // events for feeds that do not report it.
+  let rowCount = null;
+  try {
+    rowCount = feed.rowCount ? feed.rowCount(json) : null;
+  } catch {
+    rowCount = null;
+  }
+
+  return { ok: true, events, reason: null, state, rowCount };
 }

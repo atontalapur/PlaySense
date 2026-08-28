@@ -67,9 +67,28 @@ export function parseNflSummary(json) {
   });
 }
 
+// The raw play rows ESPN returned, before any of parseNflSummary's filtering.
+// The poller needs this to tell "ESPN's shape changed under us" (no rows at
+// all) from "this game has not produced an explainable play yet" (rows present,
+// none survive the parse). Returns 0 when the container is missing, which is
+// exactly the silent-rename case spec 4.2 is aimed at.
+export function countNflRows(json) {
+  if (!json || typeof json !== 'object') return 0;
+  const drives = json.drives;
+  if (!drives || typeof drives !== 'object') return 0;
+  const previous = Array.isArray(drives.previous) ? drives.previous : [];
+  let n = previous.reduce(
+    (acc, d) => acc + (d && Array.isArray(d.plays) ? d.plays.length : 0),
+    0
+  );
+  if (drives.current && Array.isArray(drives.current.plays)) n += drives.current.plays.length;
+  return n;
+}
+
 export const EspnNflFeed = {
   sport: 'nfl',
   url: (eventId) => `${BASE}?event=${encodeURIComponent(eventId)}`,
   parse: parseNflSummary,
-  gameState: espnGameState
+  gameState: espnGameState,
+  rowCount: countNflRows
 };

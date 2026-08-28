@@ -101,8 +101,12 @@ async function pumpAndSave(session, tabId) {
   // rebuild and re-poll it; the content script stops its clock off the
   // `finished` flag in the reply, and this is the belt to that braces.
   if (session.state().finished) {
+    // Keep the seen ids. A beat already in flight when the game ended can
+    // still arrive after this eviction and rebuild the session; seeded with
+    // the finished game's ids it re-polls once and emits nothing, whereas an
+    // empty seed would replay the entire game as fresh events and bill a
+    // Claude call for every high-importance play in it.
     stopSession(tabId);
-    await storageRemove([seenKey(tabId)]);
   }
 }
 

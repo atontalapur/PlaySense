@@ -12,6 +12,16 @@ export const DEFAULT_INTERVAL_MS = 10000;
 // game is only ever empty here if the shape we read has stopped existing.
 export const EMPTY_POLLS_BEFORE_DEGRADE = 3;
 
+// Consecutive polls tolerated where the feed DID return rows but none of them
+// survived parsing. Far longer than the empty threshold (5 minutes at the 10s
+// beat) because this state is ambiguous: it is what a field-level rename looks
+// like, but it is also normal at the start of an MLB game, where the parser
+// keeps only narrative 'Play Result' rows and the opening at-bat produces none
+// for a minute or more. Degrading falsely costs the user the AI tier for the
+// whole game, since degradation is one-way and scraped text never reaches the
+// model — so this side errs long.
+export const UNPARSED_POLLS_BEFORE_DEGRADE = 30;
+
 export function createPoller({
   feed,
   eventId,
@@ -28,6 +38,7 @@ export function createPoller({
   let timer = null;
   let stopped = false;
   let emptyPolls = 0;
+  let unparsedPolls = 0;
   // Some feeds are legitimately sparse (see emptyIsFailure on OpenF1Feed and
   // the DOM scraper), so the empty-poll rule is opt-out per feed.
   const emptyIsFailure = feed.emptyIsFailure !== false;
@@ -48,14 +59,32 @@ export function createPoller({
     // Counted on the feed's whole response, not on `fresh` below: a live game
     // whose plays we have all seen already is working perfectly.
     if (emptyIsFailure && result.state !== 'pre') {
-      if (result.events.length === 0) {
+      // Measured on the feed's RAW rows, not on parsed events. The parsers
+      // filter hard — parseMlbSummary keeps 84 of 541 rows in the recorded
+      // fixture, and none until the first at-bat completes — so counting
+      // parsed events here degraded essentially every MLB game within 30
+      // seconds of first pitch. Feeds that cannot report a row count fall
+      // back to the parsed length.
+      const rows = result.rowCount == null ? result.events.length : result.rowCount;
+      if (rows === 0) {
+        // The container we read is gone: the silent-rename case spec 4.2 is
+        // aimed at. A live game always has rows, so this is unambiguous.
         emptyPolls += 1;
-        if (emptyPolls >= EMPTY_POLLS_BEFORE_DEGRADE) {
-          onFailure('empty-feed');
-          return;
-        }
+        unparsedPolls = 0;
+      } else if (result.events.length === 0) {
+        emptyPolls = 0;
+        unparsedPolls += 1;
       } else {
         emptyPolls = 0;
+        unparsedPolls = 0;
+      }
+      if (emptyPolls >= EMPTY_POLLS_BEFORE_DEGRADE) {
+        onFailure('empty-feed');
+        return;
+      }
+      if (unparsedPolls >= UNPARSED_POLLS_BEFORE_DEGRADE) {
+        onFailure('unparsed-feed');
+        return;
       }
     }
 

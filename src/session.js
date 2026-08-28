@@ -8,6 +8,10 @@ export function createSession({ tabId, url, deps, seed = [] }) {
   let poller = null;
   let degraded = false;
   let finished = false;
+  // Set only by stop(). emit() reads this rather than `poller === null`,
+  // because switchToFinished also nulls the poller and the final plays of a
+  // game are exactly the ones that must still be delivered.
+  let halted = false;
 
   const state = () => ({
     sport: detected ? detected.sport : null,
@@ -43,7 +47,10 @@ export function createSession({ tabId, url, deps, seed = [] }) {
       // Stop halts the REMAINING backlog. The first pump of a live game can
       // carry ~32 high-importance events, each a multi-second paid call; a user
       // who stops monitoring partway must not be billed for the rest of the loop.
-      if (!poller) break;
+      // Deliberately not `!poller`: an overlapping beat can finish the game
+      // while this loop is mid-flight, and truncating there would drop final
+      // plays whose ids poller.tick() has already marked seen.
+      if (halted) break;
       const explanation = deps.explainer ? await deps.explainer.explain(event) : null;
       explained.push({ ...event, explanation });
     }
@@ -94,6 +101,7 @@ export function createSession({ tabId, url, deps, seed = [] }) {
       if (degraded && poller) await poller.tick();
     },
     stop() {
+      halted = true;
       if (poller) poller.stop();
       poller = null;
     }
