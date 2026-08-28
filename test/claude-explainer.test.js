@@ -70,6 +70,12 @@ test('returns null on api error rather than throwing', async () => {
   assert.equal(await h.explainer.explain(highEvent), null);
 });
 
+test('an HTTP failure does not increment the daily budget', async () => {
+  const h = harness({ fetchImpl: async () => ({ ok: false, status: 500, json: async () => ({}) }) });
+  await h.explainer.explain(highEvent);
+  assert.equal(h.budget().count, 0, 'a rejected call was never billed, so it must not count against the cap');
+});
+
 test('returns null on network failure rather than throwing', async () => {
   const h = harness({ fetchImpl: async () => { throw new Error('offline'); } });
   assert.equal(await h.explainer.explain(highEvent), null);
@@ -116,6 +122,17 @@ test('the system prompt treats the feed text as untrusted data and constrains ou
   assert.match(system, /no preamble/i);
 });
 
+test('the system prompt anchors its anti-injection instruction to the actual fence markers', () => {
+  const { system, user } = buildPrompt(highEvent);
+  // The system prompt must name the same markers the user message fences
+  // the untrusted text with, so the model knows exactly which region to
+  // distrust — not just a vague "the description".
+  assert.ok(system.includes('<<<FEED_TEXT>>>'));
+  assert.ok(system.includes('<<<END_FEED_TEXT>>>'));
+  assert.ok(user.includes('<<<FEED_TEXT>>>'));
+  assert.ok(user.includes('<<<END_FEED_TEXT>>>'));
+});
+
 test('a fence sequence inside the feed text cannot forge structured fields', () => {
   const { user } = buildPrompt({
     ...highEvent,
@@ -149,11 +166,21 @@ test('N concurrent explains record exactly N against the daily budget', async ()
   assert.equal(h.budget().count, N, 'the persisted budget must equal the number of successful calls');
 });
 
-test('a cancellation predicate flipped mid-flight stops the call without recording budget', async () => {
+test('a cancellation predicate flipped before the fetch stops the call without recording budget', async () => {
+  const h = harness({ isCancelled: () => true });
+  const out = await h.explainer.explain(highEvent);
+  assert.equal(out, null);
+  assert.equal(h.calls.length, 0, 'no fetch should have been made — nothing was billed');
+  assert.equal(h.budget().count, 0);
+});
+
+test('a cancellation flipping after a successful response still counts the billed call', async () => {
   let cancelled = false;
+  let fetchCount = 0;
   const h = harness({
     isCancelled: () => cancelled,
     fetchImpl: async () => {
+      fetchCount += 1;
       cancelled = true; // flips while the fetch is "in flight"
       return {
         ok: true,
@@ -162,6 +189,7 @@ test('a cancellation predicate flipped mid-flight stops the call without recordi
     }
   });
   const out = await h.explainer.explain(highEvent);
-  assert.equal(out, null);
-  assert.equal(h.budget().count, 0, 'a cancelled call must not be recorded against the budget');
+  assert.equal(out, null, 'the discarded answer must not be returned');
+  assert.equal(fetchCount, 1, 'the API was actually called and billed');
+  assert.equal(h.budget().count, 1, 'a call Anthropic already billed must still count against the cap, even though the answer was discarded');
 });
