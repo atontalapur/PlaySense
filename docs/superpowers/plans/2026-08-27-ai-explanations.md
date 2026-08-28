@@ -367,6 +367,16 @@ test('every event has a stable non-empty id and no duplicates', () => {
   assert.equal(new Set(ids).size, ids.length, 'ids must be unique');
 });
 
+test('the in-progress drive is not double-counted', () => {
+  // ESPN repeats the current drive's plays inside drives.previous. The raw
+  // flattened count is higher than the distinct count; parse must collapse it.
+  const raw = (fixture.drives.previous || []).reduce((n, d) => n + (d.plays || []).length, 0)
+    + ((fixture.drives.current && fixture.drives.current.plays) || []).length;
+  const events = parseNflSummary(fixture);
+  assert.ok(events.length < raw, `expected dedup: raw ${raw}, parsed ${events.length}`);
+  assert.equal(events.length, new Set(events.map(e => e.id)).size);
+});
+
 test('scoring plays are detected and marked high importance', () => {
   const events = parseNflSummary(fixture);
   const scoring = events.filter(e => e.isScoring);
@@ -456,7 +466,16 @@ export function parseNflSummary(json) {
     drives.current && Array.isArray(drives.current.plays) ? drives.current.plays : [];
   currentPlays.forEach((play, pi) => events.push(playToEvent(play, 'cur', pi)));
 
-  return events;
+  // ESPN lists the in-progress drive's plays in BOTH drives.previous and
+  // drives.current, so the flattened list contains byte-identical repeats
+  // sharing one id. Verified in the recorded fixture: 177 rows, 168 distinct.
+  // Collapse them here, keeping first occurrence and preserving order.
+  const seen = new Set();
+  return events.filter(e => {
+    if (seen.has(e.id)) return false;
+    seen.add(e.id);
+    return true;
+  });
 }
 
 export const EspnNflFeed = {
@@ -469,7 +488,7 @@ export const EspnNflFeed = {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `node --test test/espn-nfl.test.js`
-Expected: PASS, 7 tests.
+Expected: PASS, 8 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -990,6 +1009,17 @@ test('a repeated identical description is not dropped when the id differs', asyn
   assert.deepEqual(seen, ['1', '2'], 'identical text with distinct ids must both emit');
 });
 
+test('duplicate ids inside one batch are emitted once', async () => {
+  const feed = feedReturning([[{ id: 'a' }, { id: 'a' }, { id: 'b' }]]);
+  const seen = [];
+  const poller = createPoller({
+    feed, eventId: '1', fetchImpl: okFetch,
+    onEvents: (evts) => seen.push(...evts.map(e => e.id))
+  });
+  await poller.tick();
+  assert.deepEqual(seen, ['a', 'b']);
+});
+
 test('the first tick emits the full backlog', async () => {
   const feed = feedReturning([[{ id: 'a' }, { id: 'b' }, { id: 'c' }]]);
   let count = 0;
@@ -1062,8 +1092,14 @@ export function createPoller({
       return;
     }
 
-    const fresh = result.events.filter(e => !seen.has(e.id));
-    fresh.forEach(e => seen.add(e.id));
+    // Filter and mark in one pass. Computing `fresh` before marking would let
+    // two copies of one id inside a single batch both survive the filter.
+    const fresh = [];
+    for (const e of result.events) {
+      if (seen.has(e.id)) continue;
+      seen.add(e.id);
+      fresh.push(e);
+    }
     // Awaited: Task 15 makes the session's emit() async (it awaits the
     // explainer per event). A bare call would make emission fire-and-forget
     // and let two overlapping ticks deliver events out of order.
