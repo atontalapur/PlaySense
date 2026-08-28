@@ -18,6 +18,7 @@ export function createPoller({
     if (stopped) return;
 
     const result = await fetchEvents(feed, eventId, fetchImpl);
+    if (stopped) return;
     if (!result.ok) {
       onFailure(result.reason);
       return;

@@ -93,3 +93,25 @@ test('stop prevents further ticks', async () => {
   await poller.tick();
   assert.deepEqual(seen, ['a']);
 });
+
+test('a tick in flight when stop is called emits nothing', async () => {
+  const feed = feedReturning([[{ id: 'a' }]]);
+  let fetchResolve;
+  const controlledFetch = async () => {
+    return new Promise(resolve => {
+      fetchResolve = resolve;
+    });
+  };
+  const emitted = [];
+  const poller = createPoller({
+    feed, eventId: '1', fetchImpl: controlledFetch,
+    onEvents: (evts) => emitted.push(...evts.map(e => e.id))
+  });
+
+  const tickPromise = poller.tick();
+  poller.stop();
+  fetchResolve({ ok: true, json: async () => ({}) });
+  await tickPromise;
+
+  assert.deepEqual(emitted, [], 'in-flight tick after stop must not emit');
+});

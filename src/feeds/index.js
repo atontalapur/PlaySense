@@ -68,12 +68,11 @@ export async function fetchEvents(feed, eventId, fetchImpl = fetch) {
   let response;
   try {
     response = await fetchImpl(feed.url(eventId));
+    if (!response.ok) {
+      return { ok: false, events: [], reason: `http-${response.status}` };
+    }
   } catch {
     return { ok: false, events: [], reason: 'network-error' };
-  }
-
-  if (!response.ok) {
-    return { ok: false, events: [], reason: `http-${response.status}` };
   }
 
   let json;

@@ -105,3 +105,10 @@ test('fetchEvents reports failure on network error rather than throwing', async 
   assert.equal(res.ok, false);
   assert.equal(res.reason, 'network-error');
 });
+
+test('fetchEvents returns failure when fetchImpl resolves to non-Response rather than throwing', async () => {
+  const fakeFetch = async () => undefined;
+  const res = await fetchEvents(EspnNflFeed, '123', fakeFetch);
+  assert.equal(res.ok, false);
+  assert.equal(typeof res.reason, 'string', 'reason must be a string');
+});
