@@ -769,7 +769,7 @@ git commit -m "feat: add OpenF1 race control feed for F1 events"
 **Interfaces:**
 - Consumes: `EspnNflFeed`, `EspnMlbFeed`, `OpenF1Feed`
 - Produces:
-  - `detectGame(url) -> {sport, eventId} | null`
+  - `detectGame(url) -> {sport, eventId, pageId} | null` where `eventId` is what the sport's feed needs (for F1 the OpenF1 session key `'latest'`, not the ESPN race id) and `pageId` is the ESPN id from the URL
   - `feedForSport(sport) -> feed | null`
   - `fetchEvents(feed, eventId, fetchImpl) -> Promise<{ok, events, reason}>`
 
@@ -782,28 +782,61 @@ import assert from 'node:assert/strict';
 import { detectGame, feedForSport, fetchEvents } from '../src/feeds/index.js';
 import { EspnNflFeed } from '../src/feeds/espn-nfl.js';
 
-test('detects nfl game pages', () => {
-  assert.deepEqual(
-    detectGame('https://www.espn.com/nfl/game/_/gameId/401873298'),
-    { sport: 'nfl', eventId: '401873298' }
-  );
-  assert.deepEqual(
-    detectGame('https://www.espn.com/nfl/game/_/gameId/401873298/pit-buf'),
-    { sport: 'nfl', eventId: '401873298' }
-  );
+test('detects nfl game pages in path form, with and without a slug', () => {
+  for (const url of [
+    'https://www.espn.com/nfl/game/_/gameId/401873298',
+    'https://www.espn.com/nfl/game/_/gameId/401873298/pit-buf'
+  ]) {
+    const got = detectGame(url);
+    assert.equal(got.sport, 'nfl', url);
+    assert.equal(got.eventId, '401873298', url);
+  }
+});
+
+test('detects the nfl live link, which puts gameId in the query string', () => {
+  // ESPN's own scoreboard "live" link is /nfl/game?gameId=N, not a path.
+  const got = detectGame('https://www.espn.com/nfl/game?gameId=401873299');
+  assert.equal(got.sport, 'nfl');
+  assert.equal(got.eventId, '401873299');
+});
+
+test('detects playbyplay and boxscore pages', () => {
+  for (const [url, sport] of [
+    ['https://www.espn.com/nfl/playbyplay/_/gameId/401873298', 'nfl'],
+    ['https://www.espn.com/nfl/boxscore/_/gameId/401873298', 'nfl'],
+    ['https://www.espn.com/mlb/playbyplay/_/gameId/401816696', 'mlb']
+  ]) {
+    const got = detectGame(url);
+    assert.ok(got, url);
+    assert.equal(got.sport, sport, url);
+  }
 });
 
 test('detects mlb game pages', () => {
-  assert.deepEqual(
-    detectGame('https://www.espn.com/mlb/game/_/gameId/401816696'),
-    { sport: 'mlb', eventId: '401816696' }
-  );
+  const got = detectGame('https://www.espn.com/mlb/game/_/gameId/401816696/rockies-nationals');
+  assert.equal(got.sport, 'mlb');
+  assert.equal(got.eventId, '401816696');
 });
 
-test('detects f1 race pages', () => {
-  const got = detectGame('https://www.espn.com/f1/race/_/raceId/600057442');
+test('detects f1 race pages using ESPNs real /_/id/ shape', () => {
+  const got = detectGame('https://www.espn.com/f1/race/_/id/600057442');
   assert.equal(got.sport, 'f1');
-  assert.equal(got.eventId, '600057442');
+  assert.equal(got.pageId, '600057442');
+});
+
+test('f1 eventId is the OpenF1 session key, not the ESPN race id', () => {
+  // ESPN race ids and OpenF1 session keys are different id spaces: passing
+  // ESPN's 600057442 to OpenF1 returns 404 "No results found". The ESPN id
+  // only tells us the user is on an F1 page; the data comes from OpenF1's
+  // current session.
+  const got = detectGame('https://www.espn.com/f1/race/_/id/600057442');
+  assert.equal(got.eventId, 'latest');
+  assert.notEqual(got.eventId, got.pageId);
+});
+
+test('nfl and mlb eventId and pageId are the same ESPN id', () => {
+  const got = detectGame('https://www.espn.com/nfl/game/_/gameId/401873298');
+  assert.equal(got.eventId, got.pageId);
 });
 
 test('returns null for non-game pages', () => {
@@ -872,11 +905,21 @@ const FEEDS = {
   f1: OpenF1Feed
 };
 
-const PATTERNS = [
-  { sport: 'nfl', re: /^\/nfl\/game\/_\/gameId\/(\d+)/i },
-  { sport: 'mlb', re: /^\/mlb\/game\/_\/gameId\/(\d+)/i },
-  { sport: 'f1', re: /^\/f1\/(?:race|results)\/_\/raceId\/(\d+)/i }
-];
+// Verified against ESPN's own scoreboard event links. Three shapes exist and
+// all three are pages a viewer actually lands on:
+//   /nfl/game/_/gameId/401873298[/pit-buf]   summary (path form)
+//   /nfl/game?gameId=401873299               the scoreboard's "live" link
+//   /nfl/playbyplay/_/gameId/401873298       play-by-play, and /boxscore/ too
+// F1 uses /_/id/, NOT /_/raceId/.
+const BALL_PATH = /^\/(nfl|mlb)\/(?:game|playbyplay|boxscore)\/_\/gameId\/(\d+)/i;
+const BALL_QUERY = /^\/(nfl|mlb)\/(?:game|playbyplay|boxscore)\/?$/i;
+const F1_PATH = /^\/f1\/(?:race|results)\/_\/id\/(\d+)/i;
+
+// OpenF1 keys on its own session_key, a different id space from ESPN's race
+// id (ESPN's 600057442 returns 404 from OpenF1). The ESPN id only tells us the
+// viewer is on an F1 page; "latest" resolves to OpenF1's current session, which
+// is the running one during a live race — exactly what this extension explains.
+const F1_SESSION_KEY = 'latest';
 
 export function detectGame(rawUrl) {
   if (!rawUrl || typeof rawUrl !== 'string') return null;
@@ -890,10 +933,26 @@ export function detectGame(rawUrl) {
 
   if (!/(^|\.)espn\.com$/i.test(parsed.hostname)) return null;
 
-  for (const { sport, re } of PATTERNS) {
-    const match = parsed.pathname.match(re);
-    if (match) return { sport, eventId: match[1] };
+  const f1 = parsed.pathname.match(F1_PATH);
+  if (f1) {
+    return { sport: 'f1', eventId: F1_SESSION_KEY, pageId: f1[1] };
   }
+
+  const path = parsed.pathname.match(BALL_PATH);
+  if (path) {
+    const sport = path[1].toLowerCase();
+    return { sport, eventId: path[2], pageId: path[2] };
+  }
+
+  const query = parsed.pathname.match(BALL_QUERY);
+  if (query) {
+    const gameId = parsed.searchParams.get('gameId');
+    if (gameId && /^\d+$/.test(gameId)) {
+      const sport = query[1].toLowerCase();
+      return { sport, eventId: gameId, pageId: gameId };
+    }
+  }
+
   return null;
 }
 
@@ -928,7 +987,7 @@ export async function fetchEvents(feed, eventId, fetchImpl = fetch) {
 - [ ] **Step 4: Run the test to verify it passes**
 
 Run: `node --test test/feed-registry.test.js`
-Expected: PASS, 9 tests.
+Expected: PASS, 13 tests.
 
 - [ ] **Step 5: Run the whole suite**
 
