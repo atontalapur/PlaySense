@@ -16,6 +16,11 @@ export function createSession({ tabId, url, deps, seed = [] }) {
   });
 
   // Low importance is suppressed entirely; it never reaches the overlay.
+  // Both createPoller call sites pass this as an expression-bodied arrow so the
+  // promise reaches poller.tick()'s await. A block body would return undefined,
+  // making emission fire-and-forget: tick() marks ids seen synchronously, so the
+  // worker could be terminated mid-backlog with those events already persisted
+  // as seen and their paid explainer calls billed but never delivered.
   async function emit(events) {
     const shown = events.filter(e => e.importance !== IMPORTANCE.LOW);
     if (shown.length === 0) return;
@@ -44,7 +49,7 @@ export function createSession({ tabId, url, deps, seed = [] }) {
       feed: createDomScrapeFeed(detected.sport),
       eventId: detected.eventId,
       fetchImpl: createTabScrapeFetch(tabId, deps.sendToTab),
-      onEvents: (evts) => { emit(evts); },
+      onEvents: (evts) => emit(evts),
       seed: carried
     });
   }
@@ -58,7 +63,7 @@ export function createSession({ tabId, url, deps, seed = [] }) {
         feed: feedForSport(detected.sport),
         eventId: detected.eventId,
         fetchImpl: deps.fetchImpl,
-        onEvents: (evts) => { emit(evts); },
+        onEvents: (evts) => emit(evts),
         onFailure: (reason) => switchToDegraded(reason),
         seed
       });

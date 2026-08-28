@@ -138,3 +138,32 @@ test('a rebuilt session seeded with prior ids does not replay them', async () =>
   assert.equal(evt.events[0].id, '2');
   session.stop();
 });
+
+// Regression: emit() is async (it awaits a paid explainer call per event), so
+// onEvents must RETURN that promise or poller.tick()'s await awaits undefined.
+// The mocks here resolve on macrotasks deliberately — a microtask-resolving
+// mock passes whether or not the promise is returned.
+test('pump does not resolve until emission has been delivered', async () => {
+  const messages = [];
+  const macrotask = () => new Promise(resolve => setTimeout(resolve, 5));
+  const d = deps({
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ drives: { previous: [{ plays: [
+        { id: '9', text: 'Sack', type: { text: 'Sack' } }
+      ] }] } })
+    }),
+    explainer: { explain: async () => { await macrotask(); return 'a sack'; } },
+    sendToTab: async (tabId, msg) => { await macrotask(); messages.push(msg); return {}; }
+  });
+  const session = createSession({
+    tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298', deps: d
+  });
+  await session.start();
+  await session.pump();
+
+  const evtMsg = messages.find(m => m.action === 'events');
+  assert.ok(evtMsg, 'the events message must have been sent before pump() resolved');
+  assert.equal(evtMsg.events[0].explanation, 'a sack');
+  session.stop();
+});
