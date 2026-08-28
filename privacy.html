@@ -26,17 +26,38 @@
   <h2>What PlaySense does</h2>
   <p>PlaySense is a Chrome extension that reads ESPN game pages and displays plain-English explanations of live sports events in an overlay on your screen.</p>
 
-  <h2>Data collection</h2>
-  <p>PlaySense does not collect, transmit, or store any personal information. No data is ever sent to any external server. All processing happens locally in your browser.</p>
-
-  <h2>ESPN page content</h2>
-  <p>PlaySense reads the text content of ESPN game pages to detect live game events. This content is processed in memory only and is discarded when you close the tab or deactivate monitoring. It is never stored beyond your active session.</p>
-
-  <h2>Browser storage</h2>
-  <p>PlaySense uses <code>chrome.storage.local</code> to remember whether you have seen the first-run onboarding message. No other data is stored.</p>
-
-  <h2>Third-party services</h2>
-  <p>PlaySense does not use any third-party analytics, advertising, or tracking services.</p>
+  <h2>What PlaySense sends, and where</h2>
+  <p>
+    To describe a live game, PlaySense requests public game data from two
+    third-party services:
+  </p>
+  <ul>
+    <li>
+      <strong>ESPN</strong> (<code>site.api.espn.com</code>) — public scores and
+      play-by-play for the game page you are viewing. PlaySense sends only the
+      public game identifier from the page URL.
+    </li>
+    <li>
+      <strong>OpenF1</strong> (<code>api.openf1.org</code>) — public Formula 1
+      race-control messages. PlaySense sends only the public session identifier.
+    </li>
+  </ul>
+  <p>
+    These requests contain no personal information, no account identifiers, and
+    no browsing history. PlaySense sends nothing about any page other than the
+    live game you are actively monitoring.
+  </p>
+  <h2>What PlaySense stores</h2>
+  <p>
+    A single flag recording whether you have seen the welcome message, kept in
+    your browser via <code>chrome.storage.local</code>. Game events are held in
+    memory for the current session and are discarded when the tab closes.
+  </p>
+  <h2>What PlaySense does not do</h2>
+  <p>
+    No analytics, no tracking, no advertising, no accounts, and no transmission
+    of data to the extension author. PlaySense has no server.
+  </p>
 
   <h2>Contact</h2>
   <p>Questions about this policy can be directed to the extension's GitHub repository at <a href="https://github.com/atontalapur/PlaySense">github.com/atontalapur/PlaySense</a>.</p>

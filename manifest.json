@@ -16,7 +16,9 @@
   ],
   "host_permissions": [
     "https://www.espn.com/*",
-    "https://espn.com/*"
+    "https://espn.com/*",
+    "https://site.api.espn.com/*",
+    "https://api.openf1.org/*"
   ],
   "content_scripts": [
     {
@@ -29,7 +31,8 @@
     }
   ],
   "background": {
-    "service_worker": "background.js"
+    "service_worker": "background.js",
+    "type": "module"
   },
   "action": {
     "default_popup": "popup.html",
