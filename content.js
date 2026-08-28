@@ -51,25 +51,8 @@ class PlaySense {
 
       this.createOverlay();
       this.showOnboardingIfNeeded();
-      this.detectGameType();
 
-      // Re-detect game type periodically in case page content changes
-      this.gameTypeInterval = setInterval(() => {
-        try {
-          const previousGameType = this.gameType;
-          this.detectGameType();
-
-          // If game type changed, log it
-          if (previousGameType !== this.gameType) {
-
-            this.addEvent('System', `Game type changed to ${this.gameType ? this.gameType.toUpperCase() : 'Unknown'}`);
-          }
-        } catch (error) {
-          this.handleError('GameTypeDetection', error);
-        }
-      }, 10000); // Check every 10 seconds
-
-      // Listen for messages from popup
+      // Listen for messages from popup and the background service worker
       this.messageListener = (request, sender, sendResponse) => {
         try {
           this.handleMessage(request, sender, sendResponse);
@@ -126,14 +109,7 @@ class PlaySense {
         sendResponse({ success: true });
         break;
       case 'getStatus':
-        sendResponse({
-          isActive: this.isActive,
-          gameType: this.gameType,
-          eventCount: this.eventLog.length,
-          errorCount: this.errorCount,
-          isInitialized: this.isInitialized,
-          performanceMetrics: this.performanceMetrics
-        });
+        this.handleStatusRequest(sendResponse);
         break;
       case 'showOverlay':
         this.showOverlay();
@@ -147,9 +123,62 @@ class PlaySense {
         this.reset();
         sendResponse({ success: true });
         break;
+      case 'events':
+        this.rememberSport(request.events);
+        request.events.forEach((event) => {
+          const description = event.explanation || event.text;
+          this.addEvent(this.labelFor(event), description);
+        });
+        sendResponse({ ok: true });
+        break;
+      case 'degraded':
+        this.addEvent('System', 'Live data feed unavailable. Falling back to page reading.');
+        sendResponse({ ok: true });
+        break;
+      case 'legacyScrape':
+        sendResponse({ rows: this.legacyScrape() });
+        break;
       default:
-        throw new Error(`Unknown action: ${request.action}`);
+        // Never throw here. A throw reaches handleError, which logs a visible
+        // error and resets the extension after maxErrors.
+        sendResponse({ ok: false, reason: `unknown action: ${request.action}` });
+        break;
     }
+  }
+
+  labelFor(event) {
+    const sport = (event.sport || '').toUpperCase();
+    return event.type ? `${sport} ${event.type}` : sport || 'Event';
+  }
+
+  // Sport is no longer detected here; it arrives with the events.
+  rememberSport(events) {
+    const withSport = events.find(e => e.sport);
+    if (withSport) this.gameType = withSport.sport;
+  }
+
+  handleStatusRequest(sendResponse) {
+    sendResponse({
+      isActive: this.isActive,
+      gameType: this.gameType || null,
+      eventCount: this.eventLog.length
+    });
+  }
+
+  legacyScrape() {
+    const rows = [];
+    try {
+      const elements = document.querySelectorAll('[class*="play"], [class*="Play"]');
+      elements.forEach((el) => {
+        const text = (el.textContent || '').trim();
+        if (text.length > 20 && text.length < 300) {
+          rows.push({ text, type: 'Play' });
+        }
+      });
+    } catch (error) {
+      this.handleError('LegacyScrape', error);
+    }
+    return rows.slice(0, 20);
   }
 
   handleError(context, error) {
@@ -180,7 +209,7 @@ class PlaySense {
   reset() {
     try {
 
-      this.stopMonitoring();
+      this.stopPollTimer();
       this.cleanup();
       this.errorCount = 0;
       this.retryCount = 0;
@@ -328,7 +357,6 @@ class PlaySense {
         });
         this.onboardingDismissed = true;
         currentEl.textContent = 'Click the extension icon to start monitoring.';
-        this.detectGameType();
       };
 
       currentEl.appendChild(msg);
@@ -428,7 +456,7 @@ class PlaySense {
 
       // Also stop monitoring when hiding
       if (this.isActive) {
-        this.stopMonitoring();
+        this.stopPolling();
         this.isActive = false;
 
       }
@@ -437,471 +465,57 @@ class PlaySense {
     }
   }
 
-  detectGameType() {
-    const startTime = performance.now();
-
-    try {
-      // Validate inputs
-      const url = this.validateUrl(window.location.href);
-      const pageContent = this.extractPageContent();
-
-      if (!url || !pageContent) {
-        this.gameType = null;
-        this.updateOverlay('Unable to detect game - invalid page content');
-        return;
-      }
-
-      // Enhanced game type detection with scoring system
-      const gameScores = {
-        nfl: this.getNFLScore(url, pageContent),
-        mlb: this.getMLBScore(url, pageContent),
-        f1: this.getF1Score(url, pageContent)
-      };
-
-      // Validate scores
-      const validScores = Object.values(gameScores).filter(score =>
-        typeof score === 'number' && !isNaN(score) && isFinite(score)
-      );
-
-      if (validScores.length === 0) {
-        this.gameType = null;
-        this.updateOverlay('Unable to detect game - scoring failed');
-        return;
-      }
-
-      // Find the game type with the highest score
-      const maxScore = Math.max(...validScores);
-
-      // Dynamic threshold based on page content quality
-      const minThreshold = this.calculateDynamicThreshold(pageContent);
-
-      if (maxScore >= minThreshold) {
-        this.gameType = Object.keys(gameScores).find(key => gameScores[key] === maxScore);
-
-        // Additional validation for detected game type
-        if (!this.validateGameType(this.gameType, url, pageContent)) {
-          this.gameType = null;
-          this.updateOverlay('Game detection validation failed');
-          return;
-        }
-      } else {
-        this.gameType = null;
-      }
-
-      // Performance tracking
-      this.performanceMetrics.detectionTime = performance.now() - startTime;
-
-      const labelEl = document.getElementById('playsense-sport-label');
-      if (labelEl) labelEl.textContent = this.gameType ? this.gameType.toUpperCase() : '';
-
-      this.updateOverlay(`Detected: ${this.gameType ? this.gameType.toUpperCase() : 'No supported game'}`);
-
-      if (this.gameType) {
-        this.addEvent('System', `Ready to monitor ${this.gameType.toUpperCase()} game`);
-      }
-    } catch (error) {
-      this.handleError('GameDetection', error);
-      this.gameType = null;
-      this.updateOverlay('Game detection failed');
-    }
-  }
-
-  validateUrl(url) {
-    if (!url || typeof url !== 'string') {
-      return null;
-    }
-
-    try {
-      const urlObj = new URL(url);
-      return urlObj.href;
-    } catch (error) {
-      console.warn('PlaySense: Invalid URL provided');
-      return null;
-    }
-  }
-
-  extractPageContent() {
-    try {
-      if (!document.body) {
-        return '';
-      }
-
-      // Get text content with better extraction
-      const textContent = document.body.innerText || document.body.textContent || '';
-
-      if (!textContent || textContent.length < 10) {
-        console.warn('Page content too short or empty');
-        return '';
-      }
-
-      return textContent.toLowerCase().trim();
-    } catch (error) {
-      console.error('Error extracting page content:', error);
-      return '';
-    }
-  }
-
-  calculateDynamicThreshold(pageContent) {
-    // Base threshold
-    let threshold = 5;
-
-    // Adjust based on content quality
-    if (pageContent.length < 100) {
-      threshold = 3; // Lower threshold for short content
-    } else if (pageContent.length > 5000) {
-      threshold = 8; // Higher threshold for long content (more noise)
-    }
-
-    // Adjust based on content diversity
-    const uniqueWords = new Set(pageContent.split(/\s+/)).size;
-    if (uniqueWords < 50) {
-      threshold = 3;
-    } else if (uniqueWords > 500) {
-      threshold = 10;
-    }
-
-    return Math.max(3, Math.min(15, threshold));
-  }
-
-  validateGameType(gameType, url, pageContent) {
-    if (!gameType) return false;
-
-    // Additional validation for detected game type
-    const validationPatterns = {
-      nfl: ['nfl', 'football', 'touchdown', 'quarterback'],
-      mlb: ['mlb', 'baseball', 'inning', 'home run'],
-      f1: ['f1', 'formula', 'grand prix', 'lap time']
-    };
-
-    const patterns = validationPatterns[gameType];
-    if (!patterns) return false;
-
-    // Check if at least 2 validation patterns are present
-    const matches = patterns.filter(pattern =>
-      pageContent.includes(pattern) || url.toLowerCase().includes(pattern)
-    );
-
-    return matches.length >= 2;
-  }
-
-  getNFLScore(url, pageContent) {
-    try {
-      if (!url || !pageContent) return 0;
-
-      let score = 0;
-      const lowerUrl = url.toLowerCase();
-
-      // URL patterns for NFL (higher weight)
-      const nflUrlPatterns = [
-        { pattern: '/nfl/', weight: 15, exact: false },
-        { pattern: 'nfl.com', weight: 15, exact: false },
-        { pattern: 'nflgame', weight: 12, exact: false },
-        { pattern: 'nfl-live', weight: 12, exact: false },
-        { pattern: '/football/', weight: 8, exact: false },
-        { pattern: 'nfl-football', weight: 10, exact: false },
-        { pattern: 'espn.com/nfl', weight: 20, exact: false },
-        { pattern: 'sports.nfl.com', weight: 18, exact: false }
-      ];
-
-      nflUrlPatterns.forEach(({ pattern, weight, exact }) => {
-        if (exact ? lowerUrl === pattern : lowerUrl.includes(pattern)) {
-          score += weight;
-        }
-      });
-
-      // Content patterns for NFL (more specific terms)
-      const nflContentPatterns = [
-        { pattern: 'touchdown', weight: 10, context: ['scored', 'caught', 'threw'] },
-        { pattern: 'field goal', weight: 10, context: ['kicked', 'made', 'missed'] },
-        { pattern: 'quarterback', weight: 8, context: ['pass', 'threw', 'sacked'] },
-        { pattern: 'running back', weight: 8, context: ['rushed', 'carried', 'fumbled'] },
-        { pattern: 'yard line', weight: 7, context: ['yard', 'line', 'down'] },
-        { pattern: 'first down', weight: 7, context: ['down', 'yard', 'gained'] },
-        { pattern: 'second down', weight: 6, context: ['down', 'yard', 'gained'] },
-        { pattern: 'third down', weight: 6, context: ['down', 'yard', 'gained'] },
-        { pattern: 'fourth down', weight: 6, context: ['down', 'yard', 'gained'] },
-        { pattern: 'interception', weight: 9, context: ['threw', 'caught', 'returned'] },
-        { pattern: 'fumble', weight: 9, context: ['recovered', 'lost', 'forced'] },
-        { pattern: 'sack', weight: 7, context: ['quarterback', 'tackled', 'loss'] },
-        { pattern: 'punt', weight: 6, context: ['kicked', 'returned', 'downed'] },
-        { pattern: 'kickoff', weight: 6, context: ['returned', 'kicked', 'recovered'] },
-        { pattern: 'end zone', weight: 8, context: ['touchdown', 'goal', 'line'] },
-        { pattern: 'goal line', weight: 7, context: ['yard', 'line', 'down'] },
-        { pattern: 'extra point', weight: 7, context: ['kicked', 'made', 'missed'] },
-        { pattern: 'two point conversion', weight: 8, context: ['conversion', 'attempt', 'successful'] },
-        { pattern: 'nfl', weight: 4, context: [] }, // Lower weight for generic term
-        { pattern: 'football', weight: 3, context: [] } // Lower weight for generic term
-      ];
-
-      nflContentPatterns.forEach(({ pattern, weight, context }) => {
-        if (pageContent.includes(pattern)) {
-          let contextBonus = 0;
-
-          // Check for context words that increase confidence
-          if (context.length > 0) {
-            const contextMatches = context.filter(ctx => pageContent.includes(ctx));
-            contextBonus = Math.min(contextMatches.length * 2, 5); // Max 5 point bonus
-          }
-
-          score += weight + contextBonus;
-        }
-      });
-
-      // Penalty for non-NFL sports terms
-      const nonNFLTerms = ['baseball', 'mlb', 'inning', 'home run', 'formula 1', 'f1', 'grand prix'];
-      const nonNFLMatches = nonNFLTerms.filter(term => pageContent.includes(term));
-      score -= nonNFLMatches.length * 2;
-
-      return Math.max(0, score);
-    } catch (error) {
-      this.handleError('NFLScoring', error);
-      return 0;
-    }
-  }
-
-  getMLBScore(url, pageContent) {
-    try {
-      if (!url || !pageContent) return 0;
-
-      let score = 0;
-      const lowerUrl = url.toLowerCase();
-
-      // URL patterns for MLB (higher weight)
-      const mlbUrlPatterns = [
-        { pattern: '/mlb/', weight: 15, exact: false },
-        { pattern: 'mlb.com', weight: 15, exact: false },
-        { pattern: 'mlbgame', weight: 12, exact: false },
-        { pattern: 'mlb-live', weight: 12, exact: false },
-        { pattern: '/baseball/', weight: 8, exact: false },
-        { pattern: 'mlb-baseball', weight: 10, exact: false },
-        { pattern: 'espn.com/mlb', weight: 20, exact: false },
-        { pattern: 'sports.mlb.com', weight: 18, exact: false }
-      ];
-
-      mlbUrlPatterns.forEach(({ pattern, weight, exact }) => {
-        if (exact ? lowerUrl === pattern : lowerUrl.includes(pattern)) {
-          score += weight;
-        }
-      });
-
-      // Content patterns for MLB (more specific terms)
-      const mlbContentPatterns = [
-        { pattern: 'home run', weight: 10, context: ['hit', 'scored', 'homerun'] },
-        { pattern: 'strikeout', weight: 8, context: ['struck', 'swinging', 'looking'] },
-        { pattern: 'inning', weight: 7, context: ['top', 'bottom', 'ninth'] },
-        { pattern: 'pitcher', weight: 7, context: ['threw', 'struck', 'walked'] },
-        { pattern: 'batter', weight: 7, context: ['hit', 'struck', 'walked'] },
-        { pattern: 'homerun', weight: 10, context: ['hit', 'scored', 'home run'] },
-        { pattern: 'base hit', weight: 7, context: ['single', 'double', 'triple'] },
-        { pattern: 'double play', weight: 8, context: ['turned', 'completed', 'grounded'] },
-        { pattern: 'triple play', weight: 9, context: ['turned', 'completed', 'rare'] },
-        { pattern: 'walk', weight: 6, context: ['base', 'ball', 'four'] },
-        { pattern: 'wild pitch', weight: 6, context: ['threw', 'scored', 'advanced'] },
-        { pattern: 'balk', weight: 6, context: ['called', 'illegal', 'motion'] },
-        { pattern: 'sacrifice', weight: 6, context: ['fly', 'bunt', 'out'] },
-        { pattern: 'fly out', weight: 6, context: ['caught', 'outfield', 'infield'] },
-        { pattern: 'ground out', weight: 6, context: ['fielded', 'thrown', 'first'] },
-        { pattern: 'strike zone', weight: 7, context: ['called', 'umpire', 'pitch'] },
-        { pattern: 'mound', weight: 6, context: ['pitcher', 'threw', 'mound'] },
-        { pattern: 'diamond', weight: 6, context: ['baseball', 'field', 'infield'] },
-        { pattern: 'mlb', weight: 4, context: [] }, // Lower weight for generic term
-        { pattern: 'baseball', weight: 3, context: [] } // Lower weight for generic term
-      ];
-
-      mlbContentPatterns.forEach(({ pattern, weight, context }) => {
-        if (pageContent.includes(pattern)) {
-          let contextBonus = 0;
-
-          // Check for context words that increase confidence
-          if (context.length > 0) {
-            const contextMatches = context.filter(ctx => pageContent.includes(ctx));
-            contextBonus = Math.min(contextMatches.length * 2, 5); // Max 5 point bonus
-          }
-
-          score += weight + contextBonus;
-        }
-      });
-
-      // Penalty for non-MLB sports terms
-      const nonMLBTerms = ['football', 'nfl', 'touchdown', 'formula 1', 'f1', 'grand prix'];
-      const nonMLBMatches = nonMLBTerms.filter(term => pageContent.includes(term));
-      score -= nonMLBMatches.length * 2;
-
-      return Math.max(0, score);
-    } catch (error) {
-      this.handleError('MLBScoring', error);
-      return 0;
-    }
-  }
-
-  getF1Score(url, pageContent) {
-    try {
-      if (!url || !pageContent) return 0;
-
-      let score = 0;
-      const lowerUrl = url.toLowerCase();
-
-      // URL patterns for F1 (higher weight)
-      const f1UrlPatterns = [
-        { pattern: '/f1/', weight: 15, exact: false },
-        { pattern: 'f1.com', weight: 15, exact: false },
-        { pattern: 'formula1.com', weight: 18, exact: false },
-        { pattern: 'f1-live', weight: 12, exact: false },
-        { pattern: 'formula-1-live', weight: 12, exact: false },
-        { pattern: '/formula-1/', weight: 12, exact: false },
-        { pattern: '/formula1/', weight: 12, exact: false },
-        { pattern: 'espn.com/f1', weight: 20, exact: false }
-      ];
-
-      f1UrlPatterns.forEach(({ pattern, weight, exact }) => {
-        if (exact ? lowerUrl === pattern : lowerUrl.includes(pattern)) {
-          score += weight;
-        }
-      });
-
-      // Content patterns for F1 (more specific terms)
-      const f1ContentPatterns = [
-        { pattern: 'formula 1', weight: 10, context: ['racing', 'championship', 'season'] },
-        { pattern: 'formula one', weight: 10, context: ['racing', 'championship', 'season'] },
-        { pattern: 'grand prix', weight: 8, context: ['race', 'qualifying', 'monaco'] },
-        { pattern: 'lap time', weight: 7, context: ['fastest', 'personal', 'best'] },
-        { pattern: 'qualifying', weight: 7, context: ['session', 'pole', 'position'] },
-        { pattern: 'overtake', weight: 8, context: ['passed', 'position', 'driver'] },
-        { pattern: 'pit stop', weight: 7, context: ['tires', 'fuel', 'seconds'] },
-        { pattern: 'safety car', weight: 8, context: ['deployed', 'yellow', 'flag'] },
-        { pattern: 'pole position', weight: 7, context: ['qualifying', 'start', 'grid'] },
-        { pattern: 'fastest lap', weight: 7, context: ['bonus', 'point', 'record'] },
-        { pattern: 'drs', weight: 6, context: ['zone', 'activated', 'overtaking'] },
-        { pattern: 'kers', weight: 6, context: ['energy', 'recovery', 'boost'] },
-        { pattern: 'championship', weight: 7, context: ['points', 'leader', 'standings'] },
-        { pattern: 'constructors', weight: 7, context: ['championship', 'team', 'points'] },
-        { pattern: 'grid', weight: 6, context: ['position', 'start', 'formation'] },
-        { pattern: 'sector', weight: 6, context: ['time', 'split', 'track'] },
-        { pattern: 'f1', weight: 4, context: [] }, // Lower weight for generic term
-        { pattern: 'race', weight: 3, context: [] }, // Lower weight for generic term
-        { pattern: 'driver', weight: 3, context: [] } // Lower weight for generic term
-      ];
-
-      f1ContentPatterns.forEach(({ pattern, weight, context }) => {
-        if (pageContent.includes(pattern)) {
-          let contextBonus = 0;
-
-          // Check for context words that increase confidence
-          if (context.length > 0) {
-            const contextMatches = context.filter(ctx => pageContent.includes(ctx));
-            contextBonus = Math.min(contextMatches.length * 2, 5); // Max 5 point bonus
-          }
-
-          score += weight + contextBonus;
-        }
-      });
-
-      // Penalty for non-F1 sports terms
-      const nonF1Terms = ['football', 'nfl', 'touchdown', 'baseball', 'mlb', 'home run'];
-      const nonF1Matches = nonF1Terms.filter(term => pageContent.includes(term));
-      score -= nonF1Matches.length * 2;
-
-      return Math.max(0, score);
-    } catch (error) {
-      this.handleError('F1Scoring', error);
-      return 0;
-    }
-  }
+  POLL_INTERVAL_MS = 10000;
 
   toggle() {
     this.isActive = !this.isActive;
-
     if (this.isActive) {
-      this.startMonitoring();
-      this.updateOverlay('Monitoring started...');
+      this.startPolling();
     } else {
-      this.stopMonitoring();
-      this.updateOverlay('Monitoring stopped');
+      this.stopPolling();
     }
   }
 
-  startMonitoring() {
-    if (!this.gameType) {
-      this.updateOverlay('No supported game detected');
-      return;
-    }
-
-    // Check if we're actually on a live game page
-    if (!this.isLiveGamePage()) {
-      this.updateOverlay('No live game data detected on this page');
-      this.addEvent('System', 'Please navigate to a live game page to start monitoring');
-      return;
-    }
-
-    this.updateOverlay('Monitoring live game data...');
-    this.checkInterval = setInterval(() => {
-      this.checkForUpdates();
-    }, 3000); // Check every 3 seconds
-  }
-
-  isLiveGamePage() {
-    const pageContent = document.body.innerText.toLowerCase();
-
-    // Look for live indicators
-    const liveIndicators = [
-      'live', 'livescore', 'live score', 'live game',
-      'in progress', 'currently playing', 'now playing',
-      'quarter', 'inning', 'lap', 'period'
-    ];
-
-    const hasLiveIndicator = liveIndicators.some(indicator =>
-      pageContent.includes(indicator)
+  startPolling() {
+    chrome.runtime.sendMessage(
+      { action: 'start', url: window.location.href },
+      (reply) => {
+        void chrome.runtime.lastError;
+        if (!reply || !reply.ok) {
+          this.isActive = false;
+          this.addEvent('System', 'This page is not a supported live game.');
+          return;
+        }
+        this.stopPollTimer();
+        // Each beat drives one poll cycle in the worker AND resets its 30s
+        // idle timer, which is what keeps the worker alive while monitoring.
+        this.pollTimer = setInterval(() => {
+          chrome.runtime.sendMessage(
+            { action: 'poll', url: window.location.href },
+            () => { void chrome.runtime.lastError; }
+          );
+        }, this.POLL_INTERVAL_MS);
+      }
     );
-
-    // Look for time-based elements that suggest live data
-    const timeElements = document.querySelectorAll('*');
-    let hasTimeData = false;
-
-    timeElements.forEach(el => {
-      const text = el.textContent.trim();
-      // Look for time formats like "15:30", "3rd Quarter", "Top 5th", etc.
-      if (text.match(/\d+:\d+/) ||
-        text.match(/\d+(st|nd|rd|th)\s+(quarter|inning|period)/) ||
-        text.match(/(top|bottom)\s+\d+(st|nd|rd|th)/)) {
-        hasTimeData = true;
-      }
-    });
-
-    // Look for score elements
-    const scoreElements = document.querySelectorAll('*');
-    let hasScoreData = false;
-
-    scoreElements.forEach(el => {
-      const text = el.textContent.trim();
-      // Look for score patterns like "14-7", "3-2", etc.
-      if (text.match(/\d+-\d+/) && text.length < 10) {
-        hasScoreData = true;
-      }
-    });
-
-    return hasLiveIndicator || hasTimeData || hasScoreData;
   }
 
-  stopMonitoring() {
-    if (this.checkInterval) {
-      clearInterval(this.checkInterval);
-      this.checkInterval = null;
-    }
+  stopPollTimer() {
+    if (this.pollTimer) clearInterval(this.pollTimer);
+    this.pollTimer = null;
   }
 
-  // Clean up all intervals when extension is disabled
+  stopPolling() {
+    this.stopPollTimer();
+    chrome.runtime.sendMessage({ action: 'stop' }, () => {
+      void chrome.runtime.lastError;
+    });
+  }
+
   cleanup() {
     try {
 
       // Clear all intervals
-      if (this.checkInterval) {
-        clearInterval(this.checkInterval);
-        this.checkInterval = null;
-      }
-      if (this.gameTypeInterval) {
-        clearInterval(this.gameTypeInterval);
-        this.gameTypeInterval = null;
-      }
+      this.stopPollTimer();
 
       // Remove event listeners
       if (this.messageListener) {
@@ -944,994 +558,6 @@ class PlaySense {
     }
   }
 
-  checkForUpdates() {
-    const startTime = performance.now();
-
-    try {
-      if (!this.isActive) return;
-
-      // Validate environment before checking
-      if (!this.validateEnvironment()) {
-        console.warn('Environment validation failed, skipping update check');
-        this.updateOverlay('Waiting for page to load...');
-        return;
-      }
-
-      // Log what we're checking for debugging
-
-      // Count total elements on page for debugging (with performance limit)
-      const totalElements = this.getPageElementCount();
-
-      // Check if page has changed significantly
-      if (this.hasPageChanged()) {
-
-        this.detectGameType();
-      }
-
-      // Execute game-specific update checks
-      switch (this.gameType) {
-        case 'nfl':
-          this.checkNFLUpdates();
-          break;
-        case 'mlb':
-          this.checkMLBUpdates();
-          break;
-        case 'f1':
-          this.checkF1Updates();
-          break;
-        default:
-          console.warn('Unknown game type for updates:', this.gameType);
-      }
-
-      // Update performance metrics
-      this.performanceMetrics.updateTime = performance.now() - startTime;
-
-      // Update overlay with timestamp to show it's working
-      const now = new Date().toLocaleTimeString();
-      if (this.eventLog.length === 0 ||
-        this.eventLog[this.eventLog.length - 1].timestamp !== now) {
-        // Only update if we haven't updated recently
-        this.updateOverlay(`Monitoring... (Last check: ${now})`);
-      }
-
-      // Reset error count on successful update
-      if (this.errorCount > 0) {
-        this.errorCount = Math.max(0, this.errorCount - 1);
-      }
-
-    } catch (error) {
-      this.handleError('UpdateCheck', error);
-    }
-  }
-
-  getPageElementCount() {
-    try {
-      // Limit element counting for performance
-      const elements = document.querySelectorAll('*');
-      return Math.min(elements.length, 10000); // Cap at 10k for performance
-    } catch (error) {
-      console.warn('Error counting page elements:', error);
-      return 0;
-    }
-  }
-
-  hasPageChanged() {
-    try {
-      const currentUrl = window.location.href;
-      const currentTitle = document.title;
-
-      // Check if URL or title changed
-      if (this.lastUpdate &&
-        (this.lastUpdate.url !== currentUrl || this.lastUpdate.title !== currentTitle)) {
-        this.lastUpdate = { url: currentUrl, title: currentTitle, timestamp: Date.now() };
-        return true;
-      }
-
-      // Check if content has changed significantly (sample check)
-      const contentSample = document.body ? document.body.innerText.substring(0, 1000) : '';
-      if (this.lastUpdate && this.lastUpdate.contentSample !== contentSample) {
-        this.lastUpdate.contentSample = contentSample;
-        return true;
-      }
-
-      return false;
-    } catch (error) {
-      console.warn('Error checking page changes:', error);
-      return false;
-    }
-  }
-
-  checkNFLUpdates() {
-    try {
-
-      // Multiple selectors to find game data containers
-      const gameContainers = [
-        document.querySelector('.contentItem__content.overflow-hidden.contentItem__content--gameStory.flex'),
-        document.querySelector('[data-module="Gamecast"]'),
-        document.querySelector('.Gamecast'),
-        document.querySelector('.live-game'),
-        document.querySelector('[data-testid="gamecast"]'),
-        document.querySelector('.ScoreCell'),
-        document.querySelector('.Scoreboard')
-      ].filter(Boolean);
-
-      if (gameContainers.length === 0) {
-
-        // Fallback: search the entire page for game-related content
-        this.checkNFLUpdatesFallback();
-        return;
-      }
-
-      // Check each container for updates
-      gameContainers.forEach((container, index) => {
-        this.checkNFLContainer(container, index);
-      });
-
-    } catch (error) {
-      this.handleError('checkNFLUpdates', error);
-    }
-  }
-
-  checkNFLContainer(container, containerIndex) {
-    try {
-      // Look for team names and scores
-      const teamElements = container.querySelectorAll('[class*="team"], [class*="Team"], [class*="score"], [class*="Score"]');
-      const scoreElements = container.querySelectorAll('*');
-
-      let teamScores = [];
-      let teamNames = [];
-
-      // Extract team names
-      teamElements.forEach(el => {
-        const text = el.textContent.trim();
-        if (text.length > 2 && text.length < 20 && !/^\d+$/.test(text)) {
-          teamNames.push(text);
-        }
-      });
-
-      // Extract scores
-      scoreElements.forEach(el => {
-        const text = el.textContent.trim();
-        if (/^\d{1,2}$/.test(text) && parseInt(text) >= 0 && parseInt(text) <= 99) {
-          const rect = el.getBoundingClientRect();
-          if (rect.width > 10 && rect.height > 10) {
-            teamScores.push(text);
-          }
-        }
-      });
-
-      // Check for score changes
-      if (teamScores.length >= 2) {
-        const currentScore = teamScores.slice(0, 2).join(' - ');
-        const scoreKey = `score_${containerIndex}`;
-        if (this.previousGameState[scoreKey] !== currentScore) {
-
-          this.previousGameState[scoreKey] = currentScore;
-          const teamInfo = teamNames.length >= 2 ? ` (${teamNames[0]} vs ${teamNames[1]})` : '';
-          this.addEvent('Score Update', `Score: ${currentScore}${teamInfo}`);
-        }
-      }
-
-      // Look for play-by-play updates
-      this.checkNFLPlays(container, containerIndex);
-
-    } catch (error) {
-      this.handleError('checkNFLContainer', error);
-    }
-  }
-
-  checkNFLPlays(container, containerIndex) {
-    try {
-      // Look for play-by-play elements
-      const playSelectors = [
-        '[class*="play"]',
-        '[class*="Play"]',
-        '[class*="event"]',
-        '[class*="Event"]',
-        '[class*="update"]',
-        '[class*="Update"]',
-        '[data-testid*="play"]',
-        '[data-testid*="event"]'
-      ];
-
-      let playElements = [];
-      playSelectors.forEach(selector => {
-        playElements.push(...container.querySelectorAll(selector));
-      });
-
-      // Also check all text elements for play descriptions
-      const allTextElements = container.querySelectorAll('*');
-
-      let recentPlays = [];
-
-      // Check play elements first
-      playElements.forEach(el => {
-        const text = el.textContent.trim();
-        if (this.isNFLPlay(text)) {
-          recentPlays.push({
-            element: el,
-            text: text,
-            position: el.getBoundingClientRect().top,
-            timestamp: Date.now()
-          });
-        }
-      });
-
-      // Check all text elements for play descriptions
-      allTextElements.forEach(el => {
-        const text = el.textContent.trim();
-        if (this.isNFLPlay(text) && text.length > 20 && text.length < 500) {
-          recentPlays.push({
-            element: el,
-            text: text,
-            position: el.getBoundingClientRect().top,
-            timestamp: Date.now()
-          });
-        }
-      });
-
-      // Sort by position and timestamp
-      recentPlays.sort((a, b) => {
-        if (a.position !== b.position) {
-          return a.position - b.position;
-        }
-        return b.timestamp - a.timestamp;
-      });
-
-      // Check for new plays
-      if (recentPlays.length > 0) {
-        const latestPlay = recentPlays[0].text;
-        const playKey = `lastPlay_${containerIndex}`;
-
-        if (this.previousGameState[playKey] !== latestPlay) {
-
-          this.previousGameState[playKey] = latestPlay;
-          const explanation = this.explainNFLPlay(latestPlay);
-          if (explanation)           this.addEvent('NFL Play', explanation);
-        }
-      }
-
-    } catch (error) {
-      this.handleError('checkNFLPlays', error);
-    }
-  }
-
-  isNFLPlay(text) {
-    const lowerText = text.toLowerCase();
-
-    // Check for play keywords
-    const hasPlayEvent = lowerText.includes('penalty') ||
-      lowerText.includes('field goal') ||
-      lowerText.includes('touchdown') ||
-      lowerText.includes('interception') ||
-      lowerText.includes('fumble') ||
-      lowerText.includes('sack') ||
-      lowerText.includes('pass') ||
-      lowerText.includes('run') ||
-      lowerText.includes('tackle') ||
-      lowerText.includes('incomplete') ||
-      lowerText.includes('complete') ||
-      lowerText.includes('rush') ||
-      lowerText.includes('punt') ||
-      lowerText.includes('kickoff') ||
-      lowerText.includes('return');
-
-    // Check for game context indicators
-    const hasGameContext = lowerText.includes('yard') ||
-      lowerText.includes('down') ||
-      lowerText.match(/\d+:\d+/) || // time format
-      lowerText.match(/\d+\s*(st|nd|rd|th)/) || // downs
-      lowerText.match(/\d+nd\s+and\s+\d+/) || // down and distance
-      lowerText.includes('quarter') ||
-      lowerText.includes('timeout') ||
-      lowerText.includes('challenge');
-
-    return hasPlayEvent && hasGameContext;
-  }
-
-  checkNFLUpdatesFallback() {
-    try {
-
-      // Look for any elements that might contain game data
-      const allElements = document.querySelectorAll('*');
-      let gameData = [];
-
-      allElements.forEach(el => {
-        const text = el.textContent.trim();
-        if (this.isNFLPlay(text) && text.length > 20 && text.length < 500) {
-          gameData.push({
-            element: el,
-            text: text,
-            position: el.getBoundingClientRect().top,
-            timestamp: Date.now()
-          });
-        }
-      });
-
-      // Sort by position
-      gameData.sort((a, b) => a.position - b.position);
-
-      // Check for new plays
-      if (gameData.length > 0) {
-        const latestPlay = gameData[0].text;
-        if (this.previousGameState.fallbackPlay !== latestPlay) {
-
-          this.previousGameState.fallbackPlay = latestPlay;
-          const explanation = this.explainNFLPlay(latestPlay);
-          if (explanation)           this.addEvent('NFL Play', explanation);
-        }
-      }
-
-    } catch (error) {
-      this.handleError('checkNFLUpdatesFallback', error);
-    }
-  }
-
-  checkMLBUpdates() {
-    try {
-
-      // Multiple selectors to find MLB game data
-      const gameContainers = [
-        document.querySelector('[data-module="Gamecast"]'),
-        document.querySelector('.Gamecast'),
-        document.querySelector('.live-game'),
-        document.querySelector('[data-testid="gamecast"]'),
-        document.querySelector('.ScoreCell'),
-        document.querySelector('.Scoreboard'),
-        document.querySelector('[class*="baseball"]'),
-        document.querySelector('[class*="mlb"]')
-      ].filter(Boolean);
-
-      if (gameContainers.length === 0) {
-
-        this.checkMLBUpdatesFallback();
-        return;
-      }
-
-      // Check each container for updates
-      gameContainers.forEach((container, index) => {
-        this.checkMLBContainer(container, index);
-      });
-
-    } catch (error) {
-      this.handleError('checkMLBUpdates', error);
-    }
-  }
-
-  checkMLBContainer(container, containerIndex) {
-    try {
-      // Look for inning information
-      const inningSelectors = [
-        '.inning', '.Inning', '[data-testid="inning"]',
-        '[class*="inning"]', '[class*="Inning"]',
-        '[class*="top"]', '[class*="bottom"]'
-      ];
-
-      let inningElement = null;
-      inningSelectors.forEach(selector => {
-        if (!inningElement) {
-          inningElement = container.querySelector(selector);
-        }
-      });
-
-      if (inningElement) {
-        const currentInning = inningElement.textContent.trim();
-        const inningKey = `inning_${containerIndex}`;
-        if (this.previousGameState[inningKey] !== currentInning) {
-
-          this.previousGameState[inningKey] = currentInning;
-          this.addEvent('MLB Inning', this.explainMLBInning(currentInning));
-        }
-      }
-
-      // Look for score changes
-      this.checkMLBScores(container, containerIndex);
-
-      // Look for play-by-play updates
-      this.checkMLBPlays(container, containerIndex);
-
-    } catch (error) {
-      this.handleError('checkMLBContainer', error);
-    }
-  }
-
-  checkMLBScores(container, containerIndex) {
-    try {
-      const scoreSelectors = [
-        '.score', '.runs', '[class*="score"]', '[class*="runs"]',
-        '[class*="Score"]', '[class*="Runs"]'
-      ];
-
-      let scoreElements = [];
-      scoreSelectors.forEach(selector => {
-        scoreElements.push(...container.querySelectorAll(selector));
-      });
-
-      let totalRuns = 0;
-      let teamScores = [];
-
-      scoreElements.forEach(el => {
-        const text = el.textContent.trim();
-        const runs = parseInt(text);
-        if (!isNaN(runs) && runs >= 0 && runs <= 50) {
-          teamScores.push(runs);
-          totalRuns += runs;
-        }
-      });
-
-      const scoreKey = `totalRuns_${containerIndex}`;
-      if (this.previousGameState[scoreKey] !== totalRuns && totalRuns > 0) {
-
-        this.previousGameState[scoreKey] = totalRuns;
-        const scoreText = teamScores.length >= 2 ?
-          `Score: ${teamScores[0]} - ${teamScores[1]}` :
-          `Total runs: ${totalRuns}`;
-        this.addEvent('MLB Score', scoreText);
-      }
-
-    } catch (error) {
-      this.handleError('checkMLBScores', error);
-    }
-  }
-
-  checkMLBPlays(container, containerIndex) {
-    try {
-      const playSelectors = [
-        '[class*="play"]', '[class*="Play"]',
-        '[class*="event"]', '[class*="Event"]',
-        '[class*="update"]', '[class*="Update"]',
-        '[data-testid*="play"]', '[data-testid*="event"]'
-      ];
-
-      let playElements = [];
-      playSelectors.forEach(selector => {
-        playElements.push(...container.querySelectorAll(selector));
-      });
-
-      let recentPlays = [];
-
-      playElements.forEach(el => {
-        const text = el.textContent.trim();
-        if (this.isMLBPlay(text)) {
-          recentPlays.push({
-            element: el,
-            text: text,
-            position: el.getBoundingClientRect().top,
-            timestamp: Date.now()
-          });
-        }
-      });
-
-      // Also check all text elements
-      const allTextElements = container.querySelectorAll('*');
-      allTextElements.forEach(el => {
-        const text = el.textContent.trim();
-        if (this.isMLBPlay(text) && text.length > 20 && text.length < 500) {
-          recentPlays.push({
-            element: el,
-            text: text,
-            position: el.getBoundingClientRect().top,
-            timestamp: Date.now()
-          });
-        }
-      });
-
-      // Sort by position and timestamp
-      recentPlays.sort((a, b) => {
-        if (a.position !== b.position) {
-          return a.position - b.position;
-        }
-        return b.timestamp - a.timestamp;
-      });
-
-      // Check for new plays
-      if (recentPlays.length > 0) {
-        const latestPlay = recentPlays[0].text;
-        const playKey = `lastPlay_${containerIndex}`;
-
-        if (this.previousGameState[playKey] !== latestPlay) {
-
-          this.previousGameState[playKey] = latestPlay;
-          const explanation = this.explainMLBPlay(latestPlay);
-          if (explanation)           this.addEvent('MLB Play', explanation);
-        }
-      }
-
-    } catch (error) {
-      this.handleError('checkMLBPlays', error);
-    }
-  }
-
-  isMLBPlay(text) {
-    const lowerText = text.toLowerCase();
-
-    // Check for MLB play keywords
-    const hasPlayEvent = lowerText.includes('home run') ||
-      lowerText.includes('strikeout') ||
-      lowerText.includes('hit') ||
-      lowerText.includes('run') ||
-      lowerText.includes('out') ||
-      lowerText.includes('walk') ||
-      lowerText.includes('single') ||
-      lowerText.includes('double') ||
-      lowerText.includes('triple') ||
-      lowerText.includes('steal') ||
-      lowerText.includes('error') ||
-      lowerText.includes('wild pitch') ||
-      lowerText.includes('balk') ||
-      lowerText.includes('sacrifice') ||
-      lowerText.includes('fly out') ||
-      lowerText.includes('ground out');
-
-    // Check for game context indicators
-    const hasGameContext = lowerText.includes('inning') ||
-      lowerText.includes('base') ||
-      lowerText.includes('strike') ||
-      lowerText.includes('ball') ||
-      lowerText.includes('out') ||
-      lowerText.includes('count') ||
-      lowerText.match(/\d+-\d+/) || // score format
-      lowerText.includes('top') ||
-      lowerText.includes('bottom');
-
-    return hasPlayEvent && hasGameContext;
-  }
-
-  explainMLBPlay(playText) {
-    const text = playText.toLowerCase();
-
-    if (text.includes('home run') || text.includes('homerun')) {
-      return 'Home run! The batter hit the ball out of the park — all runners on base score, plus the batter.';
-    }
-    if (text.includes('strikeout') || text.includes('struck out')) {
-      return 'Strikeout! The batter got three strikes and is out. The pitcher wins this matchup.';
-    }
-    if (/\bwalk(ed|s)?\b/.test(text) || text.includes('base on balls')) {
-      return 'Walk! The pitcher threw 4 balls outside the strike zone, so the batter gets a free trip to first base.';
-    }
-    if (text.includes('stolen base')) {
-      return 'Stolen base! A runner sprinted to the next base while the pitcher was winding up.';
-    }
-    if (text.includes('double play')) {
-      return 'Double play! The defense got two outs on a single play — a huge momentum swing.';
-    }
-    if (text.includes('error')) {
-      return 'Error! A fielder made a mistake (dropped the ball or threw it badly), giving the offense extra bases they did not earn.';
-    }
-    if (text.includes('single')) {
-      return 'Single! The batter hit the ball and safely reached first base.';
-    }
-    if (text.includes('double') && !text.includes('double play')) {
-      return 'Double! The batter hit the ball far enough to reach second base safely.';
-    }
-    if (text.includes('triple')) {
-      return 'Triple! The batter hit the ball and made it all the way to third base — a rare and exciting hit.';
-    }
-    return null;
-  }
-
-  checkMLBUpdatesFallback() {
-    try {
-
-      const allElements = document.querySelectorAll('*');
-      let gameData = [];
-
-      allElements.forEach(el => {
-        const text = el.textContent.trim();
-        if (this.isMLBPlay(text) && text.length > 20 && text.length < 500) {
-          gameData.push({
-            element: el,
-            text: text,
-            position: el.getBoundingClientRect().top,
-            timestamp: Date.now()
-          });
-        }
-      });
-
-      gameData.sort((a, b) => a.position - b.position);
-
-      if (gameData.length > 0) {
-        const latestPlay = gameData[0].text;
-        if (this.previousGameState.fallbackMLBPlay !== latestPlay) {
-
-          this.previousGameState.fallbackMLBPlay = latestPlay;
-          const explanation = this.explainMLBPlay(latestPlay);
-          if (explanation)           this.addEvent('MLB Play', explanation);
-        }
-      }
-
-    } catch (error) {
-      this.handleError('checkMLBUpdatesFallback', error);
-    }
-  }
-
-  checkF1Updates() {
-    try {
-
-      // Multiple selectors to find F1 race data
-      const raceContainers = [
-        document.querySelector('[data-module="Gamecast"]'),
-        document.querySelector('.Gamecast'),
-        document.querySelector('.live-race'),
-        document.querySelector('[data-testid="gamecast"]'),
-        document.querySelector('[class*="f1"]'),
-        document.querySelector('[class*="formula"]'),
-        document.querySelector('[class*="race"]'),
-        document.querySelector('[class*="Race"]')
-      ].filter(Boolean);
-
-      if (raceContainers.length === 0) {
-
-        this.checkF1UpdatesFallback();
-        return;
-      }
-
-      // Check each container for updates
-      raceContainers.forEach((container, index) => {
-        this.checkF1Container(container, index);
-      });
-
-    } catch (error) {
-      this.handleError('checkF1Updates', error);
-    }
-  }
-
-  checkF1Container(container, containerIndex) {
-    try {
-      // Look for position changes
-      this.checkF1Positions(container, containerIndex);
-
-      // Look for lap times
-      this.checkF1LapTimes(container, containerIndex);
-
-      // Look for race events
-      this.checkF1Events(container, containerIndex);
-
-    } catch (error) {
-      this.handleError('checkF1Container', error);
-    }
-  }
-
-  checkF1Positions(container, containerIndex) {
-    try {
-      const positionSelectors = [
-        '.driver-position', '.Position', '[data-testid="position"]',
-        '[class*="position"]', '[class*="Position"]',
-        '[class*="driver"]', '[class*="Driver"]'
-      ];
-
-      const driverSelectors = [
-        '.driver-name', '.Driver', '[data-testid="driver"]',
-        '[class*="name"]', '[class*="Name"]'
-      ];
-
-      let positionElements = [];
-      let driverElements = [];
-
-      positionSelectors.forEach(selector => {
-        positionElements.push(...container.querySelectorAll(selector));
-      });
-
-      driverSelectors.forEach(selector => {
-        driverElements.push(...container.querySelectorAll(selector));
-      });
-
-      let currentPositions = [];
-
-      // Try to match positions with drivers
-      positionElements.forEach((pos, index) => {
-        const driverEl = driverElements[index] || driverElements[0];
-        if (pos && driverEl) {
-          const position = pos.textContent.trim();
-          const driver = driverEl.textContent.trim();
-          if (position && driver && position.length <= 3) {
-            currentPositions.push(`${position}: ${driver}`);
-          }
-        }
-      });
-
-      const positionString = currentPositions.join('|');
-      const positionKey = `positions_${containerIndex}`;
-
-      if (this.previousGameState[positionKey] !== positionString && positionString) {
-
-        this.previousGameState[positionKey] = positionString;
-
-        // Check for position changes
-        const changes = this.detectF1PositionChanges(this.previousGameState[`oldPositions_${containerIndex}`], positionString);
-        if (changes.length > 0) {
-          changes.forEach(change => this.addEvent('F1 Position', change));
-        }
-        this.previousGameState[`oldPositions_${containerIndex}`] = positionString;
-      }
-
-    } catch (error) {
-      this.handleError('checkF1Positions', error);
-    }
-  }
-
-  checkF1LapTimes(container, containerIndex) {
-    try {
-      const lapTimeSelectors = [
-        '[class*="lap"]', '[class*="Lap"]',
-        '[class*="time"]', '[class*="Time"]',
-        '[data-testid*="lap"]', '[data-testid*="time"]'
-      ];
-
-      let lapTimeElements = [];
-      lapTimeSelectors.forEach(selector => {
-        lapTimeElements.push(...container.querySelectorAll(selector));
-      });
-
-      let lapTimes = [];
-
-      lapTimeElements.forEach(el => {
-        const text = el.textContent.trim();
-        // Look for lap time format (e.g., "1:23.456" or "23.456")
-        if (text.match(/\d+:\d+\.\d+/) || text.match(/\d+\.\d+/)) {
-          lapTimes.push(text);
-        }
-      });
-
-      if (lapTimes.length > 0) {
-        const lapTimeKey = `lapTimes_${containerIndex}`;
-        const currentLapTimes = lapTimes.join('|');
-
-        if (this.previousGameState[lapTimeKey] !== currentLapTimes) {
-
-          this.previousGameState[lapTimeKey] = currentLapTimes;
-          this.addEvent('F1 Lap Time', `New lap times: ${lapTimes.slice(0, 3).join(', ')}`);
-        }
-      }
-
-    } catch (error) {
-      this.handleError('checkF1LapTimes', error);
-    }
-  }
-
-  checkF1Events(container, containerIndex) {
-    try {
-      const eventSelectors = [
-        '[class*="event"]', '[class*="Event"]',
-        '[class*="update"]', '[class*="Update"]',
-        '[class*="incident"]', '[class*="Incident"]',
-        '[data-testid*="event"]', '[data-testid*="incident"]'
-      ];
-
-      let eventElements = [];
-      eventSelectors.forEach(selector => {
-        eventElements.push(...container.querySelectorAll(selector));
-      });
-
-      let recentEvents = [];
-
-      eventElements.forEach(el => {
-        const text = el.textContent.trim();
-        if (this.isF1Event(text)) {
-          recentEvents.push({
-            element: el,
-            text: text,
-            position: el.getBoundingClientRect().top,
-            timestamp: Date.now()
-          });
-        }
-      });
-
-      // Also check all text elements
-      const allTextElements = container.querySelectorAll('*');
-      allTextElements.forEach(el => {
-        const text = el.textContent.trim();
-        if (this.isF1Event(text) && text.length > 20 && text.length < 500) {
-          recentEvents.push({
-            element: el,
-            text: text,
-            position: el.getBoundingClientRect().top,
-            timestamp: Date.now()
-          });
-        }
-      });
-
-      // Sort by position and timestamp
-      recentEvents.sort((a, b) => {
-        if (a.position !== b.position) {
-          return a.position - b.position;
-        }
-        return b.timestamp - a.timestamp;
-      });
-
-      // Check for new events
-      if (recentEvents.length > 0) {
-        const latestEvent = recentEvents[0].text;
-        const eventKey = `lastEvent_${containerIndex}`;
-
-        if (this.previousGameState[eventKey] !== latestEvent) {
-
-          this.previousGameState[eventKey] = latestEvent;
-          const explanation = this.explainF1Event(latestEvent);
-          if (explanation)           this.addEvent('F1 Event', explanation);
-        }
-      }
-
-    } catch (error) {
-
-    }
-  }
-
-  isF1Event(text) {
-    const lowerText = text.toLowerCase();
-
-    // Check for F1 event keywords
-    const hasEvent = lowerText.includes('overtake') ||
-      lowerText.includes('overtaking') ||
-      lowerText.includes('crash') ||
-      lowerText.includes('accident') ||
-      lowerText.includes('safety car') ||
-      lowerText.includes('yellow flag') ||
-      lowerText.includes('red flag') ||
-      lowerText.includes('pit stop') ||
-      lowerText.includes('pitstop') ||
-      lowerText.includes('penalty') ||
-      lowerText.includes('retirement') ||
-      lowerText.includes('dnf') ||
-      lowerText.includes('fastest lap') ||
-      lowerText.includes('lap record') ||
-      lowerText.includes('spin') ||
-      lowerText.includes('collision');
-
-    // Check for F1 context indicators
-    const hasContext = lowerText.includes('lap') ||
-      lowerText.includes('position') ||
-      lowerText.includes('driver') ||
-      lowerText.includes('race') ||
-      lowerText.includes('sector') ||
-      lowerText.includes('corner') ||
-      lowerText.match(/\d+:\d+/) || // time format
-      lowerText.match(/\d+\.\d+/) || // lap time format
-      lowerText.includes('turn') ||
-      lowerText.includes('straight');
-
-    return hasEvent && hasContext;
-  }
-
-  explainF1Event(eventText) {
-    const text = eventText.toLowerCase();
-
-    if (text.includes('overtake') || text.includes('passed') || text.includes('position change')) {
-      return 'Position change! A driver has passed another, moving up in the race standings.';
-    }
-    if (text.includes('pit stop') || text.includes('pitting')) {
-      const compound = text.includes('soft') ? ' (soft tyres — fast but wear quickly)' :
-                       text.includes('medium') ? ' (medium tyres — balanced choice)' :
-                       text.includes('hard') ? ' (hard tyres — slow but last longer)' : '';
-      return `Pit stop! A car pulled into the garage to change tyres${compound}. This costs about 2–3 seconds.`;
-    }
-    if (text.includes('virtual safety car') || text.includes('vsc')) {
-      return 'Virtual safety car! Drivers must slow to a set speed limit without a physical safety car. Used for minor incidents.';
-    }
-    if (text.includes('safety car')) {
-      return 'Safety car deployed! All cars must slow down and follow the safety car while an incident on track is cleared.';
-    }
-    if (text.includes('fastest lap')) {
-      return 'Fastest lap! A driver just set the quickest single lap of the race — worth 1 bonus championship point if they finish in the top 10.';
-    }
-    if (text.includes('drs')) {
-      return 'DRS activated! A car opened a flap on its rear wing to reduce drag and gain speed — used to help overtaking.';
-    }
-    if (text.includes('retire') || text.includes('dnf') || text.includes('out of the race')) {
-      return 'Retirement (DNF)! A car has dropped out of the race due to a mechanical failure or incident.';
-    }
-    if (text.includes('crash') || text.includes('accident')) {
-      return 'Incident on track! A driver has been in an accident and may be out of the race.';
-    }
-    if (text.includes('penalty')) {
-      return 'Penalty! A driver broke a rule (unsafe driving, track limits, etc.) and will serve a time penalty.';
-    }
-    return null;
-  }
-
-  checkF1UpdatesFallback() {
-    try {
-
-      const allElements = document.querySelectorAll('*');
-      let raceData = [];
-
-      allElements.forEach(el => {
-        const text = el.textContent.trim();
-        if (this.isF1Event(text) && text.length > 20 && text.length < 500) {
-          raceData.push({
-            element: el,
-            text: text,
-            position: el.getBoundingClientRect().top,
-            timestamp: Date.now()
-          });
-        }
-      });
-
-      raceData.sort((a, b) => a.position - b.position);
-
-      if (raceData.length > 0) {
-        const latestEvent = raceData[0].text;
-        if (this.previousGameState.fallbackF1Event !== latestEvent) {
-
-          this.previousGameState.fallbackF1Event = latestEvent;
-          const explanation = this.explainF1Event(latestEvent);
-          if (explanation)           this.addEvent('F1 Event', explanation);
-        }
-      }
-
-    } catch (error) {
-
-    }
-  }
-
-  explainNFLPlay(playText) {
-    const text = playText.toLowerCase();
-
-    if (text.includes('touchdown')) {
-      return 'Touchdown! A player reached the end zone and scored 6 points for their team.';
-    }
-    if (text.includes('two-point conversion') || text.includes('two point conversion')) {
-      return 'Two-point conversion attempt! Instead of kicking for 1 extra point, they are trying to run or pass into the end zone for 2 points.';
-    }
-    if (text.includes('extra point') || /\bpat\b/.test(text)) {
-      return 'Extra point! After a touchdown, the kicker attempts a short kick through the goalposts for 1 bonus point.';
-    }
-    if (text.includes('field goal')) {
-      return 'Field goal! The kicker scored 3 points by kicking the ball through the goalposts.';
-    }
-    if (text.includes('safety') && !text.includes('safety car') && !text.includes('player safety')) {
-      return 'Safety! The defense tackled an offensive player in their own end zone — worth 2 points for the defense.';
-    }
-    if (text.includes('interception')) {
-      return 'Interception! The defense caught a pass meant for the offense and took control of the ball.';
-    }
-    if (text.includes('fumble')) {
-      return 'Fumble! A player dropped the ball — whichever team recovers it gets possession.';
-    }
-    if (text.includes('sack')) {
-      return 'Sack! The quarterback was tackled behind the line before he could throw the ball.';
-    }
-    if (text.includes('punt')) {
-      return 'Punt! The offense kicked the ball away on 4th down rather than risk losing possession at this field position.';
-    }
-    if (text.includes('kickoff return') || text.includes('kick return')) {
-      return 'Kickoff return! After a score, the receiving team is running the kicked ball back up the field.';
-    }
-    if (text.includes('kickoff') || text.includes('kick off')) {
-      return 'Kickoff! The ball is kicked to start the drive. If it reaches the end zone, the receiving team may take a touchback and start at their 25-yard line.';
-    }
-    if (text.includes('fourth down') || text.includes('4th down')) {
-      return '4th down! This is the offense\'s last chance to gain the yards needed for a first down before potentially losing the ball.';
-    }
-    if (text.includes('penalty') || text.includes('flag')) {
-      return 'Penalty! A referee spotted a rule violation and is moving the ball to penalize the offending team.';
-    }
-    return null;
-  }
-
-  explainMLBInning(inning) {
-    const inningNum = inning.match(/\d+/);
-    const topBottom = inning.toLowerCase().includes('top') ? 'top' : 'bottom';
-
-    if (topBottom === 'top') {
-      return `Top of inning ${inningNum ? inningNum[0] : ''}! The visiting team is now batting (trying to score).`;
-    } else {
-      return `Bottom of inning ${inningNum ? inningNum[0] : ''}! The home team is now batting (trying to score).`;
-    }
-  }
-
-  detectF1PositionChanges(oldPositions, newPositions) {
-    if (!oldPositions) return [];
-
-    const changes = [];
-    // Simple position change detection - in a real implementation, 
-    // this would be more sophisticated
-    if (oldPositions !== newPositions) {
-      changes.push('Position changes detected! Drivers are overtaking each other!');
-    }
-    return changes;
-  }
-
   addEvent(type, description) {
     try {
       // Validate and sanitize inputs
@@ -1950,12 +576,8 @@ class PlaySense {
         createdAt: Date.now()
       };
 
-      // Check for duplicate events (prevent spam)
-      if (this.isDuplicateEvent(event)) {
-
-        return;
-      }
-
+      // Duplicate suppression now happens upstream via id dedup in
+      // src/poller.js, before events ever reach this content script.
       this.eventLog.push(event);
 
       // Keep only last 50 events (increased from 20)
@@ -1993,17 +615,6 @@ class PlaySense {
     }
 
     return sanitized || null;
-  }
-
-  isDuplicateEvent(newEvent) {
-    if (this.eventLog.length === 0) return false;
-
-    const recentEvents = this.eventLog.slice(-5);
-    return recentEvents.some(event =>
-      event.type === newEvent.type &&
-      event.description === newEvent.description &&
-      (Date.now() - event.createdAt) < 5000
-    );
   }
 
   updateOverlay(message) {
