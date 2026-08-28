@@ -1,7 +1,11 @@
 import { makeEvent } from '../events.js';
 
-// Stable hash so the same scraped sentence always yields the same id and the
-// poller's Set suppresses it. Scraped rows carry no feed-provided id.
+// Stable hash derived from text alone. Re-scraping the same DOM every 10 seconds
+// must not re-emit every visible line, so id is text-only to suppress repeats.
+// Cost: two distinct events with identical text (e.g., second "Timeout") collide and
+// the later one is dropped. Alternative (positional or timestamp id) would re-emit
+// the whole page on every poll, strictly worse. This is the degraded fallback when
+// ESPN's structured feed has failed — output is best-effort by definition.
 function hashText(input) {
   let h = 5381;
   for (let i = 0; i < input.length; i++) {
