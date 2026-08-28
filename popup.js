@@ -6,6 +6,36 @@ document.addEventListener('DOMContentLoaded', function () {
   const eventCount = document.getElementById('eventCount');
   const showOverlayBtn = document.getElementById('showOverlayBtn');
   const hideOverlayBtn = document.getElementById('hideOverlayBtn');
+  const apiKeyInput = document.getElementById('apiKey');
+  const saveKeyBtn = document.getElementById('saveKeyBtn');
+  const clearKeyBtn = document.getElementById('clearKeyBtn');
+  const keyStatus = document.getElementById('keyStatus');
+
+  function renderKeyStatus(hasKey) {
+    keyStatus.textContent = hasKey
+      ? 'Key saved. AI explanations enabled for major plays.'
+      : 'No key saved. Using built-in explanations.';
+  }
+
+  chrome.storage.local.get(['anthropicApiKey'], (result) => {
+    renderKeyStatus(Boolean(result.anthropicApiKey));
+  });
+
+  saveKeyBtn.addEventListener('click', () => {
+    const value = apiKeyInput.value.trim();
+    if (!value) return;
+    chrome.storage.local.set({ anthropicApiKey: value }, () => {
+      apiKeyInput.value = '';
+      renderKeyStatus(true);
+    });
+  });
+
+  clearKeyBtn.addEventListener('click', () => {
+    chrome.storage.local.remove(['anthropicApiKey'], () => {
+      apiKeyInput.value = '';
+      renderKeyStatus(false);
+    });
+  });
 
   let currentStatus = {
     isActive: false,

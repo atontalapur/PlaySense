@@ -47,6 +47,26 @@
     no browsing history. PlaySense sends nothing about any page other than the
     live game you are actively monitoring.
   </p>
+  <h2>Optional AI explanations</h2>
+  <p>
+    If you choose to save an Anthropic API key, PlaySense sends the play type and
+    the public play description of major plays to Anthropic
+    (<code>api.anthropic.com</code>) to generate a plain-English explanation. No
+    personal information, browsing history, or page content beyond the play
+    description is sent.
+  </p>
+  <p>
+    Your API key is stored only in this browser via
+    <code>chrome.storage.local</code>. It is never sent anywhere except Anthropic,
+    and the extension author never receives it. Clearing the key in the popup
+    disables this feature immediately; PlaySense then uses only its built-in
+    explanations and contacts Anthropic not at all.
+  </p>
+  <p>
+    PlaySense limits itself to 500 explanation requests per day to protect you
+    from unexpected usage on your key.
+  </p>
+
   <h2>What PlaySense stores</h2>
   <p>
     A single flag recording whether you have seen the welcome message, kept in

@@ -210,6 +210,52 @@
       margin: 6px 0;
       color: #9ca3af;
     }
+
+    .section {
+      margin: 8px 20px 20px;
+      padding: 16px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .section label {
+      display: block;
+      font-size: 12px;
+      font-weight: 600;
+      color: #a78bfa;
+      margin-bottom: 8px;
+    }
+
+    .section input[type="password"] {
+      width: 100%;
+      box-sizing: border-box;
+      padding: 10px 12px;
+      border-radius: 8px;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      background: rgba(0, 0, 0, 0.2);
+      color: #e8eaed;
+      font-size: 13px;
+      margin-bottom: 10px;
+    }
+
+    .section .row {
+      display: flex;
+      gap: 8px;
+    }
+
+    .section .row .btn {
+      margin: 0;
+      padding: 10px 16px;
+      font-size: 13px;
+    }
+
+    .hint {
+      font-size: 11px;
+      line-height: 1.5;
+      color: #9ca3af;
+      margin: 10px 0 0;
+    }
   </style>
 </head>
 
@@ -249,6 +295,22 @@
       <li>Click 📋 to see event history</li>
     </ul>
     <strong>Supported:</strong> NFL, MLB, Formula 1 on ESPN
+  </div>
+
+  <div class="section">
+    <label for="apiKey">Anthropic API key (optional)</label>
+    <input type="password" id="apiKey" placeholder="sk-ant-..." autocomplete="off">
+    <div class="row">
+      <button class="btn" id="saveKeyBtn">Save key</button>
+      <button class="btn" id="clearKeyBtn">Clear</button>
+    </div>
+    <p class="hint" id="keyStatus">No key saved. Using built-in explanations.</p>
+    <p class="hint">
+      With a key, PlaySense sends the play type and description of major plays to
+      Anthropic to write a plain-English explanation. Your key is stored only in
+      this browser. Without a key, PlaySense uses its built-in explanations and
+      sends nothing to Anthropic.
+    </p>
   </div>
 
   <div style="text-align:center; padding:8px 20px 4px; font-size:11px;">
