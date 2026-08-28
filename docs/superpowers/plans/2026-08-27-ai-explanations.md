@@ -1694,39 +1694,57 @@ Remove `detectGameType`, `calculateDynamicThreshold`, `validateGameType`, the NF
 
 Keep: `createOverlay`, drag handling, onboarding, `updateOverlay`, `updateLog`, `toggleLog`, `sanitizeString`, `handleError`.
 
-- [ ] **Step 3: Add the message handlers**
+- [ ] **Step 3: Extend the EXISTING `handleMessage` switch — do not add a parallel handler**
+
+`content.js` already has one `handleMessage(request, sender, sendResponse)` with a
+`switch (request.action)` serving the popup (`toggle`, `getStatus`, `showOverlay`,
+`hideOverlay`, `reset`). Its `default:` branch **throws**, and the listener that
+wraps it routes the throw into `handleError`, which logs a visible "Error"
+entry to the user's overlay, increments `errorCount`, and calls `reset()` once
+`errorCount` reaches `maxErrors` (10) — wiping the event log and tearing the
+extension down.
+
+So the three new background actions MUST be cases in that same switch. Adding a
+separate `handleBackgroundMessage` method would leave `default:` throwing on
+every `events` message, and at a 10-second poll the extension would destroy
+itself roughly every 100 seconds, permanently.
+
+Add these cases alongside the existing ones, and make `default` benign:
 
 ```js
-  // Background owns detection, polling and explanation. This script renders.
-  handleBackgroundMessage(request, sendResponse) {
-    if (request.action === 'events') {
-      request.events.forEach((event) => {
-        const description = event.explanation || event.text;
-        this.addEvent(this.labelFor(event), description);
-      });
-      sendResponse({ ok: true });
-      return;
-    }
+      case 'events':
+        this.rememberSport(request.events);
+        request.events.forEach((event) => {
+          const description = event.explanation || event.text;
+          this.addEvent(this.labelFor(event), description);
+        });
+        sendResponse({ ok: true });
+        break;
+      case 'degraded':
+        this.addEvent('System', 'Live data feed unavailable. Falling back to page reading.');
+        sendResponse({ ok: true });
+        break;
+      case 'legacyScrape':
+        sendResponse({ rows: this.legacyScrape() });
+        break;
+      default:
+        // Never throw here. A throw reaches handleError, which logs a visible
+        // error and resets the extension after maxErrors.
+        sendResponse({ ok: false, reason: `unknown action: ${request.action}` });
+        break;
+```
 
-    if (request.action === 'degraded') {
-      this.addEvent('System', 'Live data feed unavailable. Falling back to page reading.');
-      sendResponse({ ok: true });
-      return;
-    }
+and add the label helper:
 
-    if (request.action === 'legacyScrape') {
-      sendResponse({ rows: this.legacyScrape() });
-      return;
-    }
-
-    sendResponse({ ok: false });
-  }
-
+```js
   labelFor(event) {
     const sport = (event.sport || '').toUpperCase();
     return event.type ? `${sport} ${event.type}` : sport || 'Event';
   }
 ```
+
+Keep the existing `toggle`, `showOverlay`, `hideOverlay` and `reset` cases exactly
+as they are — `popup.js` sends all four.
 
 - [ ] **Step 4: Collapse the retained scraping into `legacyScrape`**
 
@@ -1793,7 +1811,16 @@ background sends:
 Call `this.rememberSport(request.events)` at the top of the `events` branch in
 `handleBackgroundMessage`, and route `getStatus` to `handleStatusRequest`.
 
-- [ ] **Step 7: Verify no network calls remain in content.js**
+- [ ] **Step 7: Verify the message switch cannot throw on a background action**
+
+```bash
+grep -n "Unknown action" content.js
+```
+
+Expected: no output. If the throwing `default:` survives, the extension will
+reset itself in a loop once the background starts polling.
+
+- [ ] **Step 8: Verify no network calls remain in content.js**
 
 ```bash
 grep -n "fetch(\|XMLHttpRequest\|site.api.espn\|openf1\|anthropic" content.js
@@ -1801,13 +1828,13 @@ grep -n "fetch(\|XMLHttpRequest\|site.api.espn\|openf1\|anthropic" content.js
 
 Expected: no output. If anything matches, move it to the service worker.
 
-- [ ] **Step 8: Load the extension and verify manually**
+- [ ] **Step 9: Load the extension and verify manually**
 
 Load unpacked in Chrome, open an ESPN NFL game page from `site.api.espn.com/.../nfl/scoreboard` with `state: "in"`, click the extension icon, start monitoring. Confirm the overlay populates with real plays, that the popup still shows the
 correct sport and a rising event count, and that the service worker console
 shows no errors.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 
 ```bash
 git add content.js
