@@ -244,7 +244,9 @@ class PlaySense {
     // Create toggle log button
     const toggleBtn = document.createElement('button');
     toggleBtn.id = 'playsense-toggle-log';
-    toggleBtn.textContent = '📋';
+    toggleBtn.textContent = 'Log';
+    toggleBtn.title = 'Show event history';
+    toggleBtn.setAttribute('aria-label', 'Show event history');
     toggleBtn.onclick = () => {
 
       this.toggleLog();
@@ -262,7 +264,9 @@ class PlaySense {
     // Create close button
     const closeBtn = document.createElement('button');
     closeBtn.id = 'playsense-close';
-    closeBtn.textContent = '✕';
+    closeBtn.textContent = '×';
+    closeBtn.title = 'Hide overlay';
+    closeBtn.setAttribute('aria-label', 'Hide overlay');
     closeBtn.onclick = () => {
 
       this.hideOverlay();
