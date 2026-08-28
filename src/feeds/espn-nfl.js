@@ -36,14 +36,23 @@ export function parseNflSummary(json) {
   const events = [];
   const previous = Array.isArray(drives.previous) ? drives.previous : [];
 
+  // Elements are guarded as well as containers: ESPN's endpoint is
+  // undocumented, and a single null in one of these arrays must not take the
+  // whole parse down.
+  const isPlay = (play) => play && typeof play === 'object';
+
   previous.forEach((drive, di) => {
-    const plays = Array.isArray(drive.plays) ? drive.plays : [];
-    plays.forEach((play, pi) => events.push(playToEvent(play, di, pi)));
+    const plays = drive && Array.isArray(drive.plays) ? drive.plays : [];
+    plays.forEach((play, pi) => {
+      if (isPlay(play)) events.push(playToEvent(play, di, pi));
+    });
   });
 
   const currentPlays =
     drives.current && Array.isArray(drives.current.plays) ? drives.current.plays : [];
-  currentPlays.forEach((play, pi) => events.push(playToEvent(play, 'cur', pi)));
+  currentPlays.forEach((play, pi) => {
+    if (isPlay(play)) events.push(playToEvent(play, 'cur', pi));
+  });
 
   // ESPN lists the in-progress drive's plays in BOTH drives.previous and
   // drives.current, so the flattened list contains byte-identical repeats

@@ -68,3 +68,15 @@ test('does not throw when text is present but not a string', () => {
   assert.equal(events.length, 2);
   assert.ok(events.every(e => e.text === ''));
 });
+
+// OpenF1 is a third-party feed with no schema guarantee; a null entry must be
+// skipped rather than throw out of the parser.
+test('skips null and non-object messages instead of throwing', () => {
+  const events = parseRaceControl([
+    null,
+    'not a message',
+    { session_key: 9, date: '2026-08-27T12:00:00Z', category: 'Flag', message: 'YELLOW' }
+  ]);
+  assert.equal(events.length, 1);
+  assert.equal(events[0].text, 'YELLOW');
+});

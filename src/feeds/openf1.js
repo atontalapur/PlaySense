@@ -12,23 +12,29 @@ export function parseRaceControl(json) {
   // emits exactly 20 new). (session_key, date) alone is not sufficient —
   // it collides 16 times in the recorded fixture — so the index is
   // load-bearing for id uniqueness.
-  return json.map((m, i) =>
-    makeEvent({
-      id: `${m.session_key || 's'}-${m.date || i}-${i}`,
-      sport: 'f1',
-      type: m.category || null,
-      text: typeof m.message === 'string' ? m.message.trim() : '',
-      period:
-        m.lap_number != null
-          ? { type: 'Lap', number: m.lap_number, display: `Lap ${m.lap_number}` }
-          : null,
-      clock: m.date || null,
-      score: null,
-      isScoring: false,
-      flag: m.flag || null,
-      category: m.category || null
-    })
-  );
+  // The index i is taken from the ORIGINAL array, before the guard drops
+  // anything, so ids stay stable across polls even if a malformed entry
+  // appears or disappears between them.
+  return json
+    .map((m, i) => (m && typeof m === 'object' ? { m, i } : null))
+    .filter(Boolean)
+    .map(({ m, i }) =>
+      makeEvent({
+        id: `${m.session_key || 's'}-${m.date || i}-${i}`,
+        sport: 'f1',
+        type: m.category || null,
+        text: typeof m.message === 'string' ? m.message.trim() : '',
+        period:
+          m.lap_number != null
+            ? { type: 'Lap', number: m.lap_number, display: `Lap ${m.lap_number}` }
+            : null,
+        clock: m.date || null,
+        score: null,
+        isScoring: false,
+        flag: m.flag || null,
+        category: m.category || null
+      })
+    );
 }
 
 export const OpenF1Feed = {

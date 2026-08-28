@@ -112,3 +112,19 @@ test('fetchEvents returns failure when fetchImpl resolves to non-Response rather
   assert.equal(res.ok, false);
   assert.equal(typeof res.reason, 'string', 'reason must be a string');
 });
+
+// The containment half of the "never throws" contract: it must hold for ANY
+// parser, not only the three shipped ones, because a rejection here skips
+// onFailure and the DOM-scrape fallback never engages.
+test('fetchEvents contains a throwing parser rather than rejecting', async () => {
+  const explodingFeed = {
+    sport: 'nfl',
+    url: () => 'https://example.test/summary',
+    parse: () => { throw new TypeError('parser blew up'); }
+  };
+  const fakeFetch = async () => ({ ok: true, json: async () => ({}) });
+  const res = await fetchEvents(explodingFeed, '123', fakeFetch);
+  assert.equal(res.ok, false);
+  assert.equal(res.reason, 'parse-error');
+  assert.deepEqual(res.events, []);
+});

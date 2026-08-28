@@ -90,3 +90,20 @@ test('fallback id for a play with no id is stable across the drive boundary', ()
   assert.equal(inCurrent.id, inPrevious.id);
   assert.equal(inCurrent.id, 'seq-42');
 });
+
+// ESPN's summary endpoint is undocumented and may change without notice. A null
+// element anywhere in it must not take the parser down — see the containment
+// test in feed-registry.test.js for the layer above.
+test('skips null and non-object plays and drives instead of throwing', () => {
+  const events = parseNflSummary({
+    drives: {
+      previous: [
+        null,
+        'not a drive',
+        { plays: [null, 42, { id: '7', text: 'Sack', type: { text: 'Sack' } }] }
+      ],
+      current: { plays: [null, { id: '8', text: 'Fumble', type: { text: 'Fumble Recovery' } }] }
+    }
+  });
+  assert.deepEqual(events.map(e => e.id), ['7', '8']);
+});

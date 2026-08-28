@@ -82,5 +82,16 @@ export async function fetchEvents(feed, eventId, fetchImpl = fetch) {
     return { ok: false, events: [], reason: 'parse-error' };
   }
 
-  return { ok: true, events: feed.parse(json), reason: null };
+  // The parsers guard their own inputs, but this catch is what makes the
+  // "never throws" contract above true for any future feed too. A rejection
+  // here would skip the caller's onFailure, so the DOM-scrape fallback would
+  // never engage and the extension would stall silently.
+  let events;
+  try {
+    events = feed.parse(json);
+  } catch {
+    return { ok: false, events: [], reason: 'parse-error' };
+  }
+
+  return { ok: true, events, reason: null };
 }
