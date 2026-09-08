@@ -53,7 +53,9 @@ class PlaySense {
       // Listen for messages from popup and the background service worker
       this.messageListener = (request, sender, sendResponse) => {
         try {
-          this.handleMessage(request, sender, sendResponse);
+          // Returned, not discarded: a handler that replies asynchronously has
+          // to answer `true` here or Chrome closes the channel underneath it.
+          return this.handleMessage(request, sender, sendResponse);
         } catch (error) {
           this.handleError('MessageHandler', error);
           sendResponse({ error: 'Message handling failed' });
@@ -142,6 +144,11 @@ class PlaySense {
       case 'legacyScrape':
         sendResponse({ rows: this.legacyScrape() });
         break;
+      case 'probeNano':
+        // Async: the listener must keep the channel open, so this is the one
+        // case that returns true (see the listener in init()).
+        this.probeNano().then((probe) => sendResponse({ probe }));
+        return true;
       default:
         // Never throw here. A throw reaches handleError, which logs a visible
         // error and resets the extension after maxErrors.
@@ -170,6 +177,36 @@ class PlaySense {
       gameType: this.gameType || null,
       eventCount: this.eventLog.length
     });
+  }
+
+  // Mirrors probeLanguageModel in src/explainers/nano-probe.js, which the
+  // service worker uses on its own global. Written out here rather than
+  // imported: a content script reaching a module by dynamic import has to clear
+  // both web_accessible_resources and the host page's CSP, and a diagnostic
+  // that fails to load tells us nothing about the question it was asked. The
+  // shape of the result is the contract; keep the two in step.
+  async probeNano() {
+    try {
+      const api = typeof LanguageModel === 'undefined' ? undefined : LanguageModel;
+      if (!api || typeof api.availability !== 'function') {
+        return { present: false, availability: null, usable: false, reason: 'not-exposed' };
+      }
+      const availability = await api.availability();
+      return {
+        present: true,
+        availability: typeof availability === 'string' ? availability : null,
+        usable: ['available', 'downloading', 'downloadable'].includes(availability),
+        reason: null
+      };
+    } catch (error) {
+      return {
+        present: true,
+        availability: null,
+        usable: false,
+        reason: 'availability-threw',
+        message: String((error && error.message) || error)
+      };
+    }
   }
 
   legacyScrape() {

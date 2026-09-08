@@ -1,6 +1,7 @@
 // background.js — service worker (ES module; manifest sets "type": "module")
 import { createSession } from './src/session.js';
 import { once } from './src/once.js';
+import { probeLanguageModel } from './src/explainers/nano-probe.js';
 import {
   RuleExplainer, createClaudeExplainer, createDailyBudget, createExplainerChain
 } from './src/explainers/index.js';
@@ -155,6 +156,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     stopSession(tabId);
     storageRemove([seenKey(tabId)])
       .then(() => sendResponse({ ok: true }))
+      .catch((err) => {
+        sendResponse({ ok: false, reason: 'error', message: String(err && err.message || err) });
+      });
+    return true;
+  }
+
+  // Reports whether Chrome's built-in Prompt API is reachable from the service
+  // worker and from the page, which is the open question blocking a no-API-key
+  // explainer tier. Read-only: it creates no session and downloads no model.
+  if (request.action === 'probeNano') {
+    Promise.all([
+      probeLanguageModel(globalThis),
+      sendToTab(tabId, { action: 'probeNano' })
+    ])
+      .then(([worker, reply]) => {
+        sendResponse({ ok: true, worker, page: reply ? reply.probe : null });
+      })
       .catch((err) => {
         sendResponse({ ok: false, reason: 'error', message: String(err && err.message || err) });
       });

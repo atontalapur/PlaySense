@@ -1,4 +1,5 @@
 import { validateKey } from './src/explainers/claude.js';
+import { describeProbe } from './src/explainers/nano-probe.js';
 
 document.addEventListener('DOMContentLoaded', function () {
   const toggleBtn = document.getElementById('toggleBtn');
@@ -12,6 +13,8 @@ document.addEventListener('DOMContentLoaded', function () {
   const saveKeyBtn = document.getElementById('saveKeyBtn');
   const clearKeyBtn = document.getElementById('clearKeyBtn');
   const keyStatus = document.getElementById('keyStatus');
+  const probeNanoBtn = document.getElementById('probeNanoBtn');
+  const nanoStatus = document.getElementById('nanoStatus');
 
   // A saved-but-unverified key is its own state, not the same as no key: it is
   // what a key saved by an older build looks like, and what the extension used
@@ -67,6 +70,32 @@ document.addEventListener('DOMContentLoaded', function () {
     chrome.storage.local.remove(['anthropicApiKey', 'anthropicKeyVerified'], () => {
       apiKeyInput.value = '';
       renderKeyStatus(false, false);
+    });
+  });
+
+  // Answers whether Chrome's built-in Prompt API is reachable, and from where.
+  // The service worker is where PlaySense's explainer chain runs, so a model
+  // that only the page can see needs a different design than one the worker can
+  // call directly. See src/explainers/nano-probe.js.
+  probeNanoBtn.addEventListener('click', () => {
+    probeNanoBtn.disabled = true;
+    nanoStatus.textContent = 'Checking...';
+
+    chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      const tabId = tabs[0] ? tabs[0].id : null;
+      chrome.runtime.sendMessage({ action: 'probeNano', tabId }, (reply) => {
+        probeNanoBtn.disabled = false;
+        if (chrome.runtime.lastError || !reply || !reply.ok) {
+          nanoStatus.textContent = 'Could not run the check. Reload the extension and retry.';
+          return;
+        }
+        const lines = [
+          describeProbe('Service worker', reply.worker),
+          describeProbe('Page', reply.page)
+        ];
+        nanoStatus.textContent = lines.join(' ');
+        console.log('PlaySense: on-device AI probe', reply);
+      });
     });
   });
 
