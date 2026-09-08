@@ -1,6 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createClaudeExplainer, createDailyBudget, buildPrompt, DAILY_CALL_CAP } from '../src/explainers/claude.js';
+import {
+  createClaudeExplainer, createDailyBudget, buildPrompt, DAILY_CALL_CAP, validateKey
+} from '../src/explainers/claude.js';
 import { IMPORTANCE } from '../src/events.js';
 
 function harness(overrides = {}) {
@@ -248,4 +250,54 @@ test('two explainer handles share one daily budget', async () => {
 
   assert.equal(apiCalls, DAILY_CALL_CAP, 'the cap covers both handles in total');
   assert.deepEqual(stored, { day: '2026-08-27', count: DAILY_CALL_CAP });
+});
+
+// Key validation. The popup calls this BEFORE storing a key, because the
+// explainer chain falls through to the rules tier on a bad key without saying
+// anything — so a stored-but-unusable key made the popup promise AI
+// explanations that were never going to arrive.
+test('validateKey accepts a key the API answers for', async () => {
+  const calls = [];
+  const fetchImpl = async (url, init) => {
+    calls.push({ url, init });
+    return { ok: true, status: 200 };
+  };
+
+  const result = await validateKey('sk-ant-good', fetchImpl);
+
+  assert.deepEqual(result, { ok: true, reason: null });
+  assert.match(calls[0].url, /\/v1\/models/, 'must use the free models endpoint, not messages');
+  assert.equal(calls[0].init.method, 'GET');
+  assert.equal(calls[0].init.headers['x-api-key'], 'sk-ant-good');
+  assert.equal(calls[0].init.headers['anthropic-dangerous-direct-browser-access'], 'true');
+});
+
+test('validateKey reports a rejected key distinctly from an unreachable API', async () => {
+  const rejected = await validateKey('sk-ant-bad', async () => ({ ok: false, status: 401 }));
+  assert.deepEqual(rejected, { ok: false, reason: 'rejected' });
+
+  const forbidden = await validateKey('sk-ant-bad', async () => ({ ok: false, status: 403 }));
+  assert.deepEqual(forbidden, { ok: false, reason: 'rejected' });
+
+  const offline = await validateKey('sk-ant-x', async () => { throw new Error('offline'); });
+  assert.deepEqual(offline, { ok: false, reason: 'network' });
+
+  const down = await validateKey('sk-ant-x', async () => ({ ok: false, status: 503 }));
+  assert.deepEqual(down, { ok: false, reason: 'unavailable', status: 503 });
+});
+
+test('validateKey rejects empty input without calling the network', async () => {
+  let called = false;
+  const fetchImpl = async () => { called = true; return { ok: true, status: 200 }; };
+
+  for (const value of ['', '   ', null, undefined]) {
+    const result = await validateKey(value, fetchImpl);
+    assert.deepEqual(result, { ok: false, reason: 'empty' });
+  }
+  assert.equal(called, false);
+});
+
+test('validateKey never throws, whatever the transport does', async () => {
+  const result = await validateKey('sk-ant-x', () => Promise.reject(new TypeError('Failed to fetch')));
+  assert.equal(result.ok, false);
 });

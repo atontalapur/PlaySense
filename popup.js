@@ -1,3 +1,5 @@
+import { validateKey } from './src/explainers/claude.js';
+
 document.addEventListener('DOMContentLoaded', function () {
   const toggleBtn = document.getElementById('toggleBtn');
   const statusIndicator = document.getElementById('statusIndicator');
@@ -11,29 +13,60 @@ document.addEventListener('DOMContentLoaded', function () {
   const clearKeyBtn = document.getElementById('clearKeyBtn');
   const keyStatus = document.getElementById('keyStatus');
 
-  function renderKeyStatus(hasKey) {
-    keyStatus.textContent = hasKey
-      ? 'Key saved. AI explanations enabled for major plays.'
-      : 'No key saved. Using built-in explanations.';
+  // A saved-but-unverified key is its own state, not the same as no key: it is
+  // what a key saved by an older build looks like, and what the extension used
+  // to report as "enabled" whether or not it worked.
+  function renderKeyStatus(hasKey, verified) {
+    if (!hasKey) {
+      keyStatus.textContent = 'No key saved. Using built-in explanations.';
+      return;
+    }
+    keyStatus.textContent = verified
+      ? 'Key saved and verified. AI explanations enabled for major plays.'
+      : 'Key saved but never verified. Re-save it to check that it works.';
   }
 
-  chrome.storage.local.get(['anthropicApiKey'], (result) => {
-    renderKeyStatus(Boolean(result.anthropicApiKey));
+  const KEY_FAILURES = {
+    rejected: 'Anthropic rejected that key. Nothing was saved.',
+    network: 'Could not reach Anthropic to check the key. Nothing was saved.',
+    unavailable: 'Anthropic could not be reached to check the key. Nothing was saved.',
+    empty: 'Enter a key first.'
+  };
+
+  chrome.storage.local.get(['anthropicApiKey', 'anthropicKeyVerified'], (result) => {
+    renderKeyStatus(Boolean(result.anthropicApiKey), result.anthropicKeyVerified === true);
   });
 
-  saveKeyBtn.addEventListener('click', () => {
+  saveKeyBtn.addEventListener('click', async () => {
     const value = apiKeyInput.value.trim();
     if (!value) return;
-    chrome.storage.local.set({ anthropicApiKey: value }, () => {
+
+    // Verify BEFORE storing. Storing an unusable key is the exact failure this
+    // replaces: the explainer chain falls through to the rules tier on a bad
+    // key without saying anything, so the popup used to promise AI explanations
+    // the user was never going to get.
+    saveKeyBtn.disabled = true;
+    keyStatus.textContent = 'Checking key with Anthropic...';
+
+    const result = await validateKey(value);
+
+    if (!result.ok) {
+      saveKeyBtn.disabled = false;
+      keyStatus.textContent = KEY_FAILURES[result.reason] || 'Could not verify that key. Nothing was saved.';
+      return;
+    }
+
+    chrome.storage.local.set({ anthropicApiKey: value, anthropicKeyVerified: true }, () => {
+      saveKeyBtn.disabled = false;
       apiKeyInput.value = '';
-      renderKeyStatus(true);
+      renderKeyStatus(true, true);
     });
   });
 
   clearKeyBtn.addEventListener('click', () => {
-    chrome.storage.local.remove(['anthropicApiKey'], () => {
+    chrome.storage.local.remove(['anthropicApiKey', 'anthropicKeyVerified'], () => {
       apiKeyInput.value = '';
-      renderKeyStatus(false);
+      renderKeyStatus(false, false);
     });
   });
 

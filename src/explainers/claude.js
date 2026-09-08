@@ -1,6 +1,7 @@
 import { IMPORTANCE } from '../events.js';
 
 const ENDPOINT = 'https://api.anthropic.com/v1/messages';
+const MODELS_ENDPOINT = 'https://api.anthropic.com/v1/models';
 const MODEL = 'claude-haiku-4-5';
 export const DAILY_CALL_CAP = 500;
 
@@ -55,6 +56,45 @@ export function buildPrompt(event) {
   lines.push(FEED_TEXT_CLOSE);
 
   return { system, user: lines.join('\n') };
+}
+
+// Checks a key without spending anything. /v1/models is an authenticated GET
+// that bills no tokens, so the popup can tell the user whether their key
+// actually works without costing them credit or a slot against the daily cap.
+//
+// Never throws, and never returns a bare boolean: the popup has to distinguish
+// "Anthropic says this key is bad" (do not save it) from "we could not reach
+// Anthropic to ask" (also do not save it, but say something different, because
+// the key may be fine).
+export async function validateKey(key, fetchImpl = fetch) {
+  if (typeof key !== 'string' || key.trim().length === 0) {
+    return { ok: false, reason: 'empty' };
+  }
+
+  let response;
+  try {
+    response = await fetchImpl(`${MODELS_ENDPOINT}?limit=1`, {
+      method: 'GET',
+      headers: {
+        'x-api-key': key.trim(),
+        'anthropic-version': '2023-06-01',
+        'anthropic-dangerous-direct-browser-access': 'true'
+      }
+    });
+  } catch {
+    return { ok: false, reason: 'network' };
+  }
+
+  // 401 is a bad key; 403 is a key that exists but may not reach this API.
+  // Both mean the AI tier would silently fall through to rules, which is the
+  // state this whole check exists to stop the popup from misreporting.
+  if (response.status === 401 || response.status === 403) {
+    return { ok: false, reason: 'rejected' };
+  }
+  if (!response.ok) {
+    return { ok: false, reason: 'unavailable', status: response.status };
+  }
+  return { ok: true, reason: null };
 }
 
 function dayKey(date) {

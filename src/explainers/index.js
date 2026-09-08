@@ -1,5 +1,5 @@
 export { RuleExplainer } from './rules.js';
-export { createClaudeExplainer, createDailyBudget, DAILY_CALL_CAP } from './claude.js';
+export { createClaudeExplainer, createDailyBudget, validateKey, DAILY_CALL_CAP } from './claude.js';
 
 // Tries each provider in order; the first non-null answer wins. A provider
 // that throws is skipped, so the AI tier can never make the extension worse
