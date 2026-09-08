@@ -215,6 +215,7 @@ function explainMlb(event, t) {
     : t.includes('wild pitch') ? 'A wild pitch: the throw got past the catcher, so the runners advanced a base for free.'
     : t.includes('passed ball') ? 'A passed ball: the catcher failed to hold a catchable pitch, so the runners advanced a base for free.'
     : t.includes('balk') ? 'A balk: the pitcher made an illegal move on the mound, so every runner is awarded the next base.'
+    : t.includes('picked off') ? 'Picked off: the pitcher threw to the base rather than the plate and caught the runner too far off it. He is out.'
     : t.includes('relieved') ? 'A pitching change: a fresh pitcher is taking over. Pitchers tire quickly, and managers swap them to get a better matchup against the next batters.'
     : t.includes('hit for') ? 'A pinch hitter: a substitute is batting in place of someone else, usually because he matches up better against this pitcher. The replaced player is out of the game for good.'
     : /\bat (?:first|second|third) base\b|\bat shortstop\b|\bin (?:left|right|center) field\b/.test(t) ? 'A defensive substitution: a player has moved position or come on to replace someone in the field.'

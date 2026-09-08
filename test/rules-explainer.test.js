@@ -159,4 +159,7 @@ test('mlb covers the ways a runner advances without a hit', async () => {
 
   const balk = await RuleExplainer.explain({ sport: 'mlb', text: 'Jones to second on balk by Cole.' });
   assert.match(balk, /illegal/i);
+
+  const pickoff = await RuleExplainer.explain({ sport: 'mlb', text: 'Neto picked off first.' });
+  assert.match(pickoff, /out/i);
 });
