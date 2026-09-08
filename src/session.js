@@ -3,9 +3,21 @@ import { createPoller } from './poller.js';
 import { createDomScrapeFeed, createTabScrapeFetch } from './feeds/dom-scrape.js';
 import { IMPORTANCE } from './events.js';
 
+// How many of the plays swallowed by the priming fetch are replayed as context
+// when monitoring starts. Enough that the overlay opens with something real in
+// it rather than blank; small enough that the paid explainer calls it costs are
+// a fixed, trivial ceiling rather than a function of how long the game has run.
+export const RECAP_EVENTS = 2;
+
 export function createSession({ tabId, url, deps, seed = [] }) {
   const detected = detectGame(url);
   let poller = null;
+  // Held between start() and the first pump() rather than emitted from start()
+  // itself. background.js only adds the session to its map AFTER start()
+  // resolves, and the Claude explainer's isCancelled is bound to membership of
+  // that map — emitting here would read as "the user stopped monitoring" and
+  // silently drop every recap event to the rules tier.
+  let pendingRecap = [];
   let degraded = false;
   let finished = false;
   // Set only by stop(). emit() reads this rather than `poller === null`,
@@ -91,17 +103,39 @@ export function createSession({ tabId, url, deps, seed = [] }) {
         onFinished: () => switchToFinished(),
         seed
       });
+
+      // Only a session with no history primes. A seeded session is a worker
+      // that restarted mid-game: it already knows where it left off, and
+      // swallowing the feed again would silently eat whatever happened while
+      // the worker was down.
+      if (seed.length === 0) {
+        const primed = await poller.prime();
+        if (primed.ok) {
+          pendingRecap = primed.events
+            .filter(e => e.importance === IMPORTANCE.HIGH)
+            .slice(-RECAP_EVENTS);
+        }
+      }
       return true;
     },
     // One poll cycle. When the first tick trips the fallback, the second drives
     // the freshly-created degraded poller so no cycle is lost.
     async pump() {
       if (!poller) return;
+      if (pendingRecap.length > 0) {
+        // Cleared before the await, not after: emit() is long (one explainer
+        // call per event) and a second beat landing mid-flight must not send
+        // the same recap twice.
+        const recap = pendingRecap;
+        pendingRecap = [];
+        await emit(recap);
+      }
       await poller.tick();
       if (degraded && poller) await poller.tick();
     },
     stop() {
       halted = true;
+      pendingRecap = [];
       if (poller) poller.stop();
       poller = null;
     }

@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createSession } from '../src/session.js';
+import { createSession, RECAP_EVENTS } from '../src/session.js';
 
 function deps(overrides = {}) {
   return {
@@ -107,12 +107,14 @@ test('each pump performs one poll cycle', async () => {
     tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298', deps: d
   });
   await session.start();
+  const afterPrime = ticks;
+  assert.equal(afterPrime, 1, 'start() spends exactly one fetch priming');
   await session.pump();
   await session.pump();
-  assert.equal(ticks, 2);
+  assert.equal(ticks - afterPrime, 2);
   session.stop();
   await session.pump();
-  assert.equal(ticks, 2, 'a stopped session must not poll');
+  assert.equal(ticks - afterPrime, 2, 'a stopped session must not poll');
 });
 
 test('a rebuilt session seeded with prior ids does not replay them', async () => {
@@ -234,8 +236,13 @@ test('finishing mid-backlog does not truncate the plays already marked seen', as
     }
   });
 
+  // Seeded, so this is a worker that restarted mid-game and skips the priming
+  // fetch. That is the only way a full backlog reaches emit() — a fresh session
+  // swallows it — and a backlog in flight is exactly what this regression is
+  // about. The id is not in the feed, so nothing is suppressed by it.
   const session = createSession({
-    tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298', deps: d
+    tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298',
+    deps: d, seed: ['resumed']
   });
   await session.start();
 
@@ -284,11 +291,139 @@ test('stop still halts the remaining backlog', async () => {
     }
   });
 
+  // Seeded for the same reason as the test above: a resumed session skips
+  // priming, so the whole backlog reaches emit() and stop() has something left
+  // to halt.
   session = createSession({
-    tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298', deps: d
+    tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298',
+    deps: d, seed: ['resumed']
   });
   await session.start();
   await session.pump();
 
   assert.deepEqual(delivered, ['s0'], 'only the play explained before stop is delivered');
+});
+
+// The headline regression. ESPN's summary endpoint returns every play since
+// kickoff, so before priming, clicking "Start Monitoring" in the fourth quarter
+// replayed the whole game: 146 events and 32 serial paid explainer calls on the
+// recorded NFL fixture, with a blank overlay for the minute those calls took.
+test('a fresh session does not replay the backlog it starts in the middle of', async () => {
+  const backlog = Array.from({ length: 40 }, (_, i) => ({
+    id: `b${i}`,
+    type: { text: 'Touchdown' },
+    text: `Touchdown number ${i}`,
+    scoringPlay: true
+  }));
+  const live = { id: 'live', type: { text: 'Sack' }, text: 'Sack for a loss of 6' };
+
+  let plays = backlog;
+  const delivered = [];
+  let explainCalls = 0;
+  const d = deps({
+    fetchImpl: async () => ({ ok: true, json: async () => ({ drives: { previous: [{ plays }] } }) }),
+    explainer: { explain: async () => { explainCalls += 1; return 'explained'; } },
+    sendToTab: async (tabId, msg) => {
+      if (msg.action === 'events') delivered.push(...msg.events.map(e => e.id));
+      return {};
+    }
+  });
+
+  const session = createSession({
+    tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298', deps: d
+  });
+  await session.start();
+  await session.pump();
+
+  assert.equal(delivered.length, RECAP_EVENTS, 'only the recap, not the whole game');
+  assert.deepEqual(delivered, ['b38', 'b39'], 'the recap is the most recent plays');
+  assert.equal(explainCalls, RECAP_EVENTS, 'the backlog must not be paid for');
+
+  plays = [...backlog, live];
+  await session.pump();
+  assert.deepEqual(delivered.slice(-1), ['live'], 'what happens next still arrives');
+  session.stop();
+});
+
+test('the recap skips plays that are not worth interrupting for', async () => {
+  const delivered = [];
+  const d = deps({
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ drives: { previous: [{ plays: [
+        { id: '1', text: 'Sack', type: { text: 'Sack' } },
+        { id: '2', text: 'Timeout', type: { text: 'Timeout' } },
+        { id: '3', text: 'K.Johnson up the middle for 2 yards', type: { text: 'Rush' } }
+      ] }] } })
+    }),
+    sendToTab: async (tabId, msg) => {
+      if (msg.action === 'events') delivered.push(...msg.events.map(e => e.id));
+      return {};
+    }
+  });
+
+  const session = createSession({
+    tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298', deps: d
+  });
+  await session.start();
+  await session.pump();
+
+  assert.deepEqual(delivered, ['1'], 'a timeout and a routine rush are not recap material');
+  session.stop();
+});
+
+// The other half of the contract: priming must not eat a restarted worker's gap.
+test('a resumed session does not prime, so plays missed while it was down still arrive', async () => {
+  const delivered = [];
+  const d = deps({
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ drives: { previous: [{ plays: [
+        { id: 'before', text: 'Sack', type: { text: 'Sack' } },
+        { id: 'during', text: 'Intercepted', type: { text: 'Pass Interception Return' } }
+      ] }] } })
+    }),
+    sendToTab: async (tabId, msg) => {
+      if (msg.action === 'events') delivered.push(...msg.events.map(e => e.id));
+      return {};
+    }
+  });
+
+  const session = createSession({
+    tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298',
+    deps: d, seed: ['before']
+  });
+  await session.start();
+  await session.pump();
+
+  assert.deepEqual(delivered, ['during'], 'the play that landed while the worker was down');
+  session.stop();
+});
+
+test('stopping before the first pump discards the recap rather than paying for it', async () => {
+  const delivered = [];
+  let explainCalls = 0;
+  const d = deps({
+    fetchImpl: async () => ({
+      ok: true,
+      json: async () => ({ drives: { previous: [{ plays: [
+        { id: '1', text: 'Sack', type: { text: 'Sack' } }
+      ] }] } })
+    }),
+    explainer: { explain: async () => { explainCalls += 1; return 'explained'; } },
+    sendToTab: async (tabId, msg) => {
+      if (msg.action === 'events') delivered.push(...msg.events.map(e => e.id));
+      return {};
+    }
+  });
+
+  const session = createSession({
+    tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298', deps: d
+  });
+  await session.start();
+  session.stop();
+  await session.pump();
+
+  assert.deepEqual(delivered, []);
+  assert.equal(explainCalls, 0);
 });

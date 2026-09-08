@@ -278,3 +278,66 @@ test('rows that never parse eventually degrade, at the longer threshold', async 
 
   assert.deepEqual(failures, ['unparsed-feed']);
 });
+
+// The structured feeds return the whole game, not a delta, so the first fetch
+// of a live game is a full backlog. prime() is what stops that backlog from
+// being mistaken for news.
+test('prime marks the current feed seen and returns it without emitting', async () => {
+  const feed = feedReturning([
+    [{ id: 'a' }, { id: 'b' }],
+    [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
+  ]);
+  const emitted = [];
+  const poller = createPoller({
+    feed, eventId: '1', fetchImpl: okFetch,
+    onEvents: (evts) => emitted.push(...evts.map(e => e.id))
+  });
+
+  const primed = await poller.prime();
+
+  assert.equal(primed.ok, true);
+  assert.deepEqual(primed.events.map(e => e.id), ['a', 'b'], 'prime hands back what it swallowed');
+  assert.deepEqual(emitted, [], 'prime must not emit');
+
+  await poller.tick();
+  assert.deepEqual(emitted, ['c'], 'only what arrived after priming is news');
+});
+
+test('prime reports the game state so a finished game is not primed into silence', async () => {
+  const feed = {
+    sport: 'nfl',
+    url: () => 'https://example.test/x',
+    parse: () => [{ id: 'a' }],
+    gameState: () => 'post'
+  };
+  const poller = createPoller({ feed, eventId: '1', fetchImpl: okFetch, onEvents: () => {} });
+  const primed = await poller.prime();
+  assert.equal(primed.state, 'post');
+});
+
+test('a failed prime swallows nothing, so the backlog is still there to fall back on', async () => {
+  const feed = feedReturning([[{ id: 'a' }]]);
+  const poller = createPoller({
+    feed, eventId: '1', fetchImpl: async () => ({ ok: false, status: 503, json: async () => ({}) }),
+    onEvents: () => {}
+  });
+
+  const primed = await poller.prime();
+
+  assert.equal(primed.ok, false);
+  assert.deepEqual(primed.events, []);
+  assert.equal(poller.seenCount(), 0, 'nothing may be marked seen from a fetch that failed');
+});
+
+test('prime does not count toward the empty-feed degrade threshold', async () => {
+  const feed = { sport: 'nfl', url: () => 'https://example.test/x', parse: () => [], rowCount: () => 0 };
+  const failures = [];
+  const poller = createPoller({
+    feed, eventId: '1', fetchImpl: okFetch,
+    onEvents: () => {}, onFailure: (r) => failures.push(r)
+  });
+
+  for (let i = 0; i < EMPTY_POLLS_BEFORE_DEGRADE; i += 1) await poller.prime();
+
+  assert.deepEqual(failures, [], 'priming is not evidence about the feed being broken');
+});

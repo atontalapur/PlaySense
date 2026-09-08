@@ -110,8 +110,37 @@ export function createPoller({
     }
   }
 
+  // One fetch that marks everything the feed currently carries as seen WITHOUT
+  // emitting any of it, and hands the swallowed events back to the caller.
+  //
+  // ESPN's summary endpoint returns the whole game from kickoff, not a delta.
+  // Without this, a user who starts monitoring in the fourth quarter has the
+  // entire game replayed at them: 146 events and 32 paid explainer calls on the
+  // recorded NFL fixture, delivered as one burst that leaves the overlay blank
+  // for the minute those serial calls take and then shows only the last play.
+  //
+  // Deliberately does not touch the degrade counters or call onFinished. A
+  // failed prime is not evidence about the feed's health; the tick that follows
+  // will fail the same way and take the normal degradation path, and a game
+  // that is already 'post' is finished by that tick too.
+  async function prime() {
+    if (stopped) return { ok: false, state: null, events: [] };
+
+    const result = await fetchEvents(feed, eventId, fetchImpl);
+    if (stopped || !result.ok) return { ok: false, state: null, events: [] };
+
+    const swallowed = [];
+    for (const e of result.events) {
+      if (seen.has(e.id)) continue;
+      seen.add(e.id);
+      swallowed.push(e);
+    }
+    return { ok: true, state: result.state, events: swallowed };
+  }
+
   return {
     tick,
+    prime,
     seenCount: () => seen.size,
     seenIds: () => Array.from(seen),
     start() {
