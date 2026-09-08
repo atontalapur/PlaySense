@@ -143,3 +143,20 @@ test('a malformed score or period never costs the play its explanation', async (
   assert.ok(weird && weird.includes('33-yard'), 'the explanation survives unusable context fields');
   assert.ok(!/null|undefined|NaN/.test(weird), 'and never leaks them into the copy');
 });
+
+// Found by running three live MLB games through the parser: wild pitches appear
+// in real feeds but in none of the recorded fixtures.
+test('mlb covers the ways a runner advances without a hit', async () => {
+  const wild = await RuleExplainer.explain({
+    sport: 'mlb', text: 'Bazzana to second on wild pitch by Young.'
+  });
+  assert.match(wild, /past the catcher/i);
+
+  const passed = await RuleExplainer.explain({
+    sport: 'mlb', text: 'Smith to third on passed ball by Diaz.'
+  });
+  assert.match(passed, /catcher/i);
+
+  const balk = await RuleExplainer.explain({ sport: 'mlb', text: 'Jones to second on balk by Cole.' });
+  assert.match(balk, /illegal/i);
+});
