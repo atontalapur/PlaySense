@@ -124,6 +124,9 @@ class PlaySense {
         sendResponse({ success: true });
         break;
       case 'events':
+        // The card has served its purpose the moment real explanations start
+        // arriving, and until it is dismissed updateOverlay refuses to write.
+        this.dismissOnboarding();
         this.rememberSport(request.events);
         request.events.forEach((event) => {
           const description = event.explanation || event.text;
@@ -414,12 +417,7 @@ class PlaySense {
       btn.textContent = 'Got it';
       btn.className = 'playsense-onboarding-btn';
       btn.onclick = () => {
-        chrome.storage.local.set({ hasSeenOnboarding: true }, () => {
-          if (chrome.runtime.lastError) {
-            console.warn('PlaySense: storage write failed —', chrome.runtime.lastError.message);
-          }
-        });
-        this.onboardingDismissed = true;
+        this.dismissOnboarding();
         currentEl.textContent = 'Click the extension icon to start monitoring.';
       };
 
@@ -427,6 +425,23 @@ class PlaySense {
       currentEl.appendChild(sports);
       currentEl.appendChild(btn);
     });
+  }
+
+  // The onboarding card owns #playsense-current until it is dismissed, and
+  // updateOverlay returns early until then. A user who started monitoring
+  // without clicking "Got it" therefore watched the status line tick above a
+  // frozen card while every explanation piled into the hidden log — which
+  // reads exactly like the explanations having broken.
+  dismissOnboarding() {
+    if (this.onboardingDismissed) return;
+    this.onboardingDismissed = true;
+    chrome.storage.local.set({ hasSeenOnboarding: true }, () => {
+      if (chrome.runtime.lastError) {
+        console.warn('PlaySense: storage write failed —', chrome.runtime.lastError.message);
+      }
+    });
+    const currentEl = document.getElementById('playsense-current');
+    if (currentEl) currentEl.textContent = '';
   }
 
   makeDraggable() {
