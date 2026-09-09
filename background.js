@@ -14,6 +14,15 @@ const sessions = new Map(); // tabId -> session (lost if the worker restarts)
 // their own session before either reaches sessions.set — see Task 9 fix
 // round 1. Concurrent callers must all receive the same session object.
 const inFlight = new Map();
+// tabId -> how many times monitoring has been stopped for that tab. A session
+// can be under construction when the user stops: it is not in `sessions` yet,
+// so stopSession cannot reach it, and the factory below would go on to install
+// a session nothing can stop. Construction records the number it began at and
+// discards itself if that number has moved. Entries are never removed — a
+// removed one would read back as 0 and match a construction that began at 0 —
+// but they are one integer per tab in a worker Chrome kills after 30s idle.
+const stopCount = new Map();
+const stopsFor = (tabId) => stopCount.get(tabId) || 0;
 
 const seenKey = (tabId) => `seen-${tabId}`;
 
@@ -59,6 +68,7 @@ function sendToTab(tabId, message) {
 }
 
 function stopSession(tabId) {
+  stopCount.set(tabId, stopsFor(tabId) + 1);
   const session = sessions.get(tabId);
   if (session) {
     session.stop();
@@ -81,6 +91,7 @@ async function ensureSession(tabId, url) {
   if (existing) return { session: existing, reason: null };
 
   return once(inFlight, tabId, async () => {
+    const stopsAtStart = stopsFor(tabId);
     const stored = await storageGet([seenKey(tabId)]);
     const seed = stored[seenKey(tabId)] || [];
     const session = createSession({
@@ -90,6 +101,15 @@ async function ensureSession(tabId, url) {
       seed
     });
     const started = await session.start();
+    // Monitoring was stopped, or the tab closed, while this was being built.
+    // Installing it now would leave a session that stopSession has already
+    // walked past: it would keep polling, keep emitting to the tab, and read
+    // as live to the Claude explainer's isCancelled, which is bound to
+    // membership of `sessions` and is what stops a stopped user being billed.
+    if (stopsFor(tabId) !== stopsAtStart) {
+      session.stop();
+      return { session: null, reason: 'stopped' };
+    }
     if (!started) return { session: null, reason: session.unavailableReason() };
     sessions.set(tabId, session);
     return { session, reason: null };

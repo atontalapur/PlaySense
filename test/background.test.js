@@ -95,3 +95,49 @@ test('a finished game keeps its seen ids so a late beat cannot replay it', async
   const replayed = stub.sent.filter(s => s.msg.action === 'events');
   assert.deepEqual(replayed, [], 'the late beat must not replay the game');
 });
+
+const liveSummary = (plays) => ({
+  header: { competitions: [{ status: { type: { state: 'in' } } }] },
+  drives: { previous: [{ plays }] }
+});
+
+// A session under construction is not in `sessions` yet, so stopSession could
+// not reach it and the factory installed it anyway: it went on polling and
+// emitting, and read as live to the Claude explainer's isCancelled — the check
+// that is meant to stop a stopped user being billed for the rest of a backlog.
+test('a stop that lands mid-construction cancels the session being built', async () => {
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  const plays = [{
+    id: 'p1',
+    type: { text: 'Pass Reception' },
+    text: 'W.Howard pass short right to K.Coleman to BUF 40 for 12 yards',
+    period: { number: 1 },
+    clock: { displayValue: '10:00' },
+    homeScore: 0,
+    awayScore: 0
+  }];
+  globalThis.fetch = async () => {
+    await held;
+    return { ok: true, json: async () => liveSummary(plays) };
+  };
+
+  const url = 'https://www.espn.com/nfl/game/_/gameId/401873299';
+  stub.sent.length = 0;
+  const polling = send({ action: 'poll', url }, { tab: { id: 77 } });
+
+  // Let construction reach its first fetch, then stop monitoring.
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  await send({ action: 'stop', url }, { tab: { id: 77 } });
+  release();
+
+  const reply = await polling;
+  assert.equal(reply.ok, false, 'a cancelled construction must not report success');
+  assert.deepEqual(
+    stub.sent.filter(s => s.msg.action === 'events'), [],
+    'and must not deliver events to a tab that has stopped'
+  );
+
+  const status = await send({ action: 'getStatus' }, { tab: { id: 77 } });
+  assert.equal(status.state, null, 'and must not be installed as the tab\'s session');
+});
