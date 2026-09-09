@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  createPoller, EMPTY_POLLS_BEFORE_DEGRADE, UNPARSED_POLLS_BEFORE_DEGRADE
+  createPoller, EMPTY_POLLS_BEFORE_DEGRADE, UNPARSED_POLLS_BEFORE_DEGRADE,
+  FETCH_FAILURES_BEFORE_DEGRADE
 } from '../src/poller.js';
 
 function feedReturning(batches) {
@@ -79,8 +80,29 @@ test('a failed fetch emits nothing and reports the reason', async () => {
     onEvents: () => { throw new Error('should not emit'); },
     onFailure: (reason) => failures.push(reason)
   });
-  await poller.tick();
+  for (let i = 0; i < FETCH_FAILURES_BEFORE_DEGRADE; i++) await poller.tick();
   assert.deepEqual(failures, ['http-503']);
+});
+
+// This side used to degrade on the first failure, so one ESPN 502 or one beat
+// during a wifi blip cost the user the AI tier for the whole game.
+test('a transient fetch failure does not degrade the feed', async () => {
+  const feed = feedReturning([[{ id: 'a' }], [{ id: 'b' }]]);
+  const failures = [];
+  let calls = 0;
+  const poller = createPoller({
+    feed, eventId: '1',
+    // Fails, fails, recovers, fails again — never three in a row.
+    fetchImpl: async (url) => {
+      calls += 1;
+      if (calls === 3) return okFetch(url);
+      return { ok: false, status: 502, json: async () => ({}) };
+    },
+    onEvents: () => {},
+    onFailure: (reason) => failures.push(reason)
+  });
+  for (let i = 0; i < 4; i++) await poller.tick();
+  assert.deepEqual(failures, [], 'a good poll clears the count');
 });
 
 test('stop prevents further ticks', async () => {

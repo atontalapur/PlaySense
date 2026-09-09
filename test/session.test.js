@@ -44,6 +44,10 @@ test('falls back to dom scraping when the structured feed fails', async () => {
     tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298', deps: d
   });
   await session.start();
+  // Degradation needs consecutive failures now, so one pump is not enough.
+  await session.pump();
+  assert.equal(session.state().degraded, false, 'one bad poll is not a broken feed');
+  await session.pump();
   await session.pump();
 
   assert.equal(session.state().degraded, true);

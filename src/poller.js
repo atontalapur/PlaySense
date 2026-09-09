@@ -22,6 +22,14 @@ export const EMPTY_POLLS_BEFORE_DEGRADE = 3;
 // model — so this side errs long.
 export const UNPARSED_POLLS_BEFORE_DEGRADE = 30;
 
+// Consecutive fetch failures tolerated before the feed is treated as broken.
+// This side used to degrade on the very first failure, while the two rules
+// below deliberately waited 3 and 30 polls — so a single ESPN 502, or one beat
+// during a wifi blip, cost the user the AI tier for the rest of the game.
+// Degradation is one-way and scraped text never reaches the model, so a
+// transient failure has to be as survivable here as an empty poll is.
+export const FETCH_FAILURES_BEFORE_DEGRADE = 3;
+
 export function createPoller({
   feed,
   eventId,
@@ -40,6 +48,7 @@ export function createPoller({
   let stopped = false;
   let emptyPolls = 0;
   let unparsedPolls = 0;
+  let fetchFailures = 0;
   // Last line reported, so an unchanged status is not re-sent every 10 seconds.
   let lastStatus = null;
   // Some feeds are legitimately sparse (see emptyIsFailure on OpenF1Feed and
@@ -52,9 +61,13 @@ export function createPoller({
     const result = await fetchEvents(feed, eventId, fetchImpl);
     if (stopped) return;
     if (!result.ok) {
-      onFailure(result.reason);
+      fetchFailures += 1;
+      if (fetchFailures >= FETCH_FAILURES_BEFORE_DEGRADE) onFailure(result.reason);
       return;
     }
+    // Consecutive, like the two counters below: one good poll means the feed is
+    // reachable, whatever happened on the last one.
+    fetchFailures = 0;
 
     // Spec 4.2: an empty play list is a degradation signal too, because the
     // likeliest form of an ESPN change is a silent rename that still returns a
