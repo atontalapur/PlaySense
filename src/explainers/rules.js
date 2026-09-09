@@ -91,7 +91,9 @@ function explainNfl(event, t) {
 
   const fg = NFL_FIELD_GOAL.exec(text);
   if (fg) {
-    const good = /good/i.test(fg[3]);
+    // Exact match, not a substring test: /good/i also matches "No Good", which
+    // reported every missed kick as a successful one.
+    const good = fg[3].toLowerCase() === 'good';
     return good
       ? `${readableName(fg[1])} kicked a ${fg[2]}-yard field goal. Kicking the ball through the posts is worth 3 points.${scoreLine(event)}`
       : `${readableName(fg[1])} missed a ${fg[2]}-yard field goal, so no points and the other team takes over.`;

@@ -50,6 +50,17 @@ test('nfl explanations name the players and the yardage from the play text', asy
   assert.match(fg, /33-yard/);
   assert.match(fg, /home 3, away 0/, 'a scoring play reports the new score');
 
+  // The GOOD branch was reached by /good/i, which "No Good" also satisfies, so
+  // every missed kick was announced as a made one.
+  const missed = await RuleExplainer.explain({
+    sport: 'nfl',
+    text: 'T.Bass 45 yard field goal is No Good, Center-R.Ferguson, Holder-T.Doman.',
+    score: { home: 3, away: 0 }
+  });
+  assert.match(missed, /missed/, 'a missed field goal says so');
+  assert.doesNotMatch(missed, /worth 3 points/, 'and does not describe it as scoring');
+  assert.doesNotMatch(missed, /home 3, away 0/, 'and does not report a new score');
+
   const penalty = await RuleExplainer.explain({
     sport: 'nfl',
     text: 'PENALTY on BUF-S.Gosnell, Offensive Holding, 10 yards, enforced at BUF 30.'
