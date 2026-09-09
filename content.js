@@ -271,10 +271,13 @@ class PlaySense {
     try {
 
       this.stopPollTimer();
-      this.cleanup();
       this.errorCount = 0;
       this.eventLog = [];
       this.isInitialized = false;
+      // reinitialize(), not cleanup(). cleanup() removes the onMessage listener
+      // and the overlay, and nothing re-registered either — so a reset left the
+      // extension dead on that page until a reload, with nothing to say why.
+      this.reinitialize();
       this.addEvent('System', 'Extension reset due to errors');
     } catch (error) {
       console.error('Error during reset:', error);
@@ -764,20 +767,29 @@ class PlaySense {
 
 // Initialize when page loads with enhanced error handling
 
-// Global error handler for uncaught errors
+// Errors from our own script only. A content script shares the page's window,
+// so this handler used to funnel every uncaught error on espn.com — its ads and
+// trackers included — into handleError, which writes a red line into the user's
+// event log and counts towards maxErrors, at which point the extension tears
+// itself down on a page it was working fine on.
+const EXTENSION_ORIGIN =
+  (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL)
+    ? chrome.runtime.getURL('')
+    : null;
+
 window.addEventListener('error', (event) => {
+  // Unattributable errors are the page's problem until proven otherwise.
+  if (!EXTENSION_ORIGIN || !event.filename || !event.filename.startsWith(EXTENSION_ORIGIN)) return;
   console.error('Global error caught:', event.error);
   if (window.PlaySenseInstance) {
     window.PlaySenseInstance.handleError('GlobalError', event.error);
   }
 });
 
-// Global unhandled promise rejection handler
+// A rejection carries no filename, so there is no way to tell ours from the
+// page's. Logged for debugging, never counted against the extension.
 window.addEventListener('unhandledrejection', (event) => {
   console.error('Unhandled promise rejection:', event.reason);
-  if (window.PlaySenseInstance) {
-    window.PlaySenseInstance.handleError('UnhandledRejection', event.reason);
-  }
 });
 
 function initializeExtension() {
