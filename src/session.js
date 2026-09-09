@@ -70,6 +70,14 @@ export function createSession({ tabId, url, deps, seed = [] }) {
     await deps.sendToTab(tabId, { action: 'events', events: explained });
   }
 
+  // Never gated on `halted` the way emit() is: a status line costs nothing and
+  // sends no paid call, and the last thing a stopping session reports should be
+  // the true state of the game.
+  async function sendStatus(status) {
+    if (!status) return;
+    await deps.sendToTab(tabId, { action: 'status', status });
+  }
+
   async function switchToDegraded(reason) {
     if (degraded) return;
     degraded = true;
@@ -96,6 +104,7 @@ export function createSession({ tabId, url, deps, seed = [] }) {
         eventId: detected.eventId,
         fetchImpl: deps.fetchImpl,
         onEvents: (evts) => emit(evts),
+        onStatus: (status) => sendStatus(status),
         onFailure: (reason) => switchToDegraded(reason),
         // Only the structured feeds can report a finished game; the DOM
         // scraper's gameState is always null, so the degraded poller needs no

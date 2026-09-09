@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseMlbSummary, EspnMlbFeed } from '../src/feeds/espn-mlb.js';
+import { parseMlbSummary, EspnMlbFeed, mlbStatus } from '../src/feeds/espn-mlb.js';
 import { IMPORTANCE } from '../src/events.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/mlb-summary.json', import.meta.url)));
@@ -66,4 +66,29 @@ test('reads the game state from the summary header', () => {
   // The recorded MLB fixture is a completed game.
   assert.equal(EspnMlbFeed.gameState(fixture), 'post');
   assert.equal(EspnMlbFeed.gameState({ header: {} }), null);
+});
+
+test('mlbStatus reads the count and outs that move between at-bats', () => {
+  const line = mlbStatus({
+    situation: { balls: 1, strikes: 2, outs: 2 },
+    header: { competitions: [{
+      status: { type: { detail: 'Bottom 5th' } },
+      competitors: [
+        { homeAway: 'home', team: { abbreviation: 'BAL' }, score: '5' },
+        { homeAway: 'away', team: { abbreviation: 'CLE' }, score: '6' }
+      ]
+    }] }
+  });
+  assert.match(line, /Bottom 5th/);
+  assert.match(line, /1-2, 2 out/);
+  assert.match(line, /CLE 6, BAL 5/);
+});
+
+test('mlbStatus survives a missing situation block', () => {
+  assert.equal(mlbStatus(null), null);
+  assert.equal(mlbStatus({}), null);
+  const line = mlbStatus({
+    header: { competitions: [{ status: { type: { detail: 'Final' } } }] }
+  });
+  assert.equal(line, 'Final', 'the clock alone is still worth a line');
 });

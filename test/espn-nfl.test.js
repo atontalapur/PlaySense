@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseNflSummary, EspnNflFeed } from '../src/feeds/espn-nfl.js';
+import { parseNflSummary, EspnNflFeed, nflStatus } from '../src/feeds/espn-nfl.js';
 import { IMPORTANCE } from '../src/events.js';
 
 const fixture = JSON.parse(readFileSync(new URL('./fixtures/nfl-summary.json', import.meta.url)));
@@ -112,4 +112,31 @@ test('reads the game state from the summary header', () => {
   assert.equal(EspnNflFeed.gameState(fixture), 'in');
   assert.equal(EspnNflFeed.gameState({}), null);
   assert.equal(EspnNflFeed.gameState(null), null);
+});
+
+test('nflStatus reads the clock, the down and the score', () => {
+  const summary = JSON.parse(
+    readFileSync(new URL('./fixtures/nfl-summary.json', import.meta.url), 'utf8')
+  );
+  const line = nflStatus(summary);
+  assert.match(line, /4th Quarter/);
+  assert.match(line, /3rd & Goal at PIT 2/, 'down and distance from the drive in progress');
+  assert.match(line, /PIT 27, BUF 28/, 'team abbreviations, which the play rows do not carry');
+});
+
+test('nflStatus degrades a piece at a time rather than all at once', () => {
+  assert.equal(nflStatus(null), null);
+  assert.equal(nflStatus({}), null);
+  // No drive in progress, but the clock and score are still worth showing.
+  const line = nflStatus({
+    header: { competitions: [{
+      status: { type: { detail: '1st Quarter' } },
+      competitors: [
+        { homeAway: 'home', team: { abbreviation: 'BUF' }, score: '0' },
+        { homeAway: 'away', team: { abbreviation: 'PIT' }, score: '0' }
+      ]
+    }] }
+  });
+  assert.match(line, /1st Quarter/);
+  assert.match(line, /PIT 0, BUF 0/);
 });

@@ -341,3 +341,56 @@ test('prime does not count toward the empty-feed degrade threshold', async () =>
 
   assert.deepEqual(failures, [], 'priming is not evidence about the feed being broken');
 });
+
+// The status line is the fix for an overlay that looked frozen: the MLB parser
+// only yields a play when an at-bat completes, so between at-bats there are no
+// fresh events at all while the count, outs and score keep moving.
+test('status is reported on every tick, including ticks with no new events', async () => {
+  let n = 0;
+  const feed = {
+    sport: 'mlb',
+    url: () => 'https://example.test/x',
+    parse: () => [{ id: 'a' }],
+    status: () => `poll ${++n}`
+  };
+  const statuses = [];
+  const emitted = [];
+  const poller = createPoller({
+    feed, eventId: '1', fetchImpl: okFetch,
+    onEvents: (e) => emitted.push(...e.map(x => x.id)),
+    onStatus: (s) => statuses.push(s)
+  });
+
+  await poller.tick();
+  await poller.tick();
+  await poller.tick();
+
+  assert.deepEqual(emitted, ['a'], 'the play is emitted once');
+  assert.deepEqual(statuses, ['poll 1', 'poll 2', 'poll 3'], 'status keeps moving anyway');
+});
+
+test('an unchanged status is not re-sent', async () => {
+  const feed = {
+    sport: 'mlb', url: () => 'https://example.test/x',
+    parse: () => [], rowCount: () => 5, status: () => 'Top 6th, 1 out'
+  };
+  const statuses = [];
+  const poller = createPoller({
+    feed, eventId: '1', fetchImpl: okFetch, onEvents: () => {}, onStatus: (s) => statuses.push(s)
+  });
+
+  await poller.tick();
+  await poller.tick();
+
+  assert.deepEqual(statuses, ['Top 6th, 1 out'], 'no point beating the same line every 10s');
+});
+
+test('a feed with no status reports none rather than null lines', async () => {
+  const statuses = [];
+  const poller = createPoller({
+    feed: feedReturning([[{ id: 'a' }]]), eventId: '1', fetchImpl: okFetch,
+    onEvents: () => {}, onStatus: (s) => statuses.push(s)
+  });
+  await poller.tick();
+  assert.deepEqual(statuses, [], 'race control has no such state; do not invent one');
+});

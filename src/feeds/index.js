@@ -113,5 +113,14 @@ export async function fetchEvents(feed, eventId, fetchImpl = fetch) {
     rowCount = null;
   }
 
-  return { ok: true, events, reason: null, state, rowCount };
+  // Same containment again: the live status line is a convenience, and an
+  // unusable one must never discard good events.
+  let status = null;
+  try {
+    status = feed.status ? feed.status(json) : null;
+  } catch {
+    status = null;
+  }
+
+  return { ok: true, events, reason: null, state, rowCount, status };
 }

@@ -1,6 +1,6 @@
 // src/feeds/espn-mlb.js
 import { makeEvent } from '../events.js';
-import { espnGameState } from './espn-status.js';
+import { espnGameState, espnScoreline, espnStatusDetail, statusLine } from './espn-status.js';
 
 const BASE = 'https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/summary';
 
@@ -46,10 +46,38 @@ export function countMlbRows(json) {
   return Array.isArray(json.plays) ? json.plays.length : 0;
 }
 
+// The live state of the at-bat in progress, which updates on every pitch —
+// unlike parseMlbSummary's output, which only moves when an at-bat completes.
+// That gap is why the overlay looked frozen while the ESPN page kept redrawing:
+// measured against a live game, the newest 'Play Result' row was 245 seconds
+// old while the newest raw row was 93.
+export function mlbStatus(json) {
+  if (!json || typeof json !== 'object') return null;
+  const situation = json.situation;
+
+  let now = null;
+  if (situation && typeof situation === 'object') {
+    const balls = Number(situation.balls);
+    const strikes = Number(situation.strikes);
+    const outs = Number(situation.outs);
+    const bits = [];
+    if (Number.isFinite(balls) && Number.isFinite(strikes)) bits.push(`${balls}-${strikes}`);
+    if (Number.isFinite(outs)) bits.push(`${outs} out`);
+    now = bits.length > 0 ? bits.join(', ') : null;
+  }
+
+  return statusLine({
+    detail: espnStatusDetail(json),
+    now,
+    scoreline: espnScoreline(json)
+  });
+}
+
 export const EspnMlbFeed = {
   sport: 'mlb',
   url: (eventId) => `${BASE}?event=${encodeURIComponent(eventId)}`,
   parse: parseMlbSummary,
   gameState: espnGameState,
-  rowCount: countMlbRows
+  rowCount: countMlbRows,
+  status: mlbStatus
 };

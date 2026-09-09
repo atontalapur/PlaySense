@@ -131,6 +131,10 @@ class PlaySense {
         });
         sendResponse({ ok: true });
         break;
+      case 'status':
+        this.updateStatusLine(request.status);
+        sendResponse({ ok: true });
+        break;
       case 'degraded':
         this.addEvent('System', 'Live data feed unavailable. Falling back to page reading.');
         sendResponse({ ok: true });
@@ -155,6 +159,16 @@ class PlaySense {
         sendResponse({ ok: false, reason: `unknown action: ${request.action}` });
         break;
     }
+  }
+
+  // The live state of the game: clock, what is happening right now, and the
+  // score. Updated on every poll, unlike the explanation below it — the MLB
+  // feed only yields a narrative play when an at-bat completes, so without this
+  // the overlay sat still for minutes while the ESPN page kept redrawing.
+  updateStatusLine(status) {
+    if (typeof status !== 'string' || status.length === 0) return;
+    const el = document.getElementById('playsense-status');
+    if (el) el.textContent = status;
   }
 
   labelFor(event) {
@@ -326,6 +340,9 @@ class PlaySense {
     const content = document.createElement('div');
     content.id = 'playsense-content';
 
+    const status = document.createElement('div');
+    status.id = 'playsense-status';
+
     const current = document.createElement('div');
     current.id = 'playsense-current';
     current.textContent = 'Extension loaded! Click the extension icon to start.';
@@ -342,6 +359,7 @@ class PlaySense {
     lastUpdated.id = 'playsense-last-updated';
     lastUpdated.style.cssText = 'font-size:10px; opacity:0.5; margin-top:2px;';
 
+    content.appendChild(status);
     content.appendChild(current);
     content.appendChild(sportLabel);
     content.appendChild(lastUpdated);

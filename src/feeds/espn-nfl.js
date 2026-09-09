@@ -1,6 +1,6 @@
 // src/feeds/espn-nfl.js
 import { makeEvent } from '../events.js';
-import { espnGameState } from './espn-status.js';
+import { espnGameState, espnScoreline, espnStatusDetail, statusLine } from './espn-status.js';
 
 const BASE = 'https://site.api.espn.com/apis/site/v2/sports/football/nfl/summary';
 
@@ -85,10 +85,31 @@ export function countNflRows(json) {
   return n;
 }
 
+// Down and distance for the drive in progress. NFL has no top-level
+// `situation` block, so this reads the last play of drives.current.
+export function nflStatus(json) {
+  if (!json || typeof json !== 'object') return null;
+
+  let now = null;
+  const current = json.drives && json.drives.current;
+  const plays = current && Array.isArray(current.plays) ? current.plays : [];
+  const last = plays[plays.length - 1];
+  if (last && last.start && typeof last.start.downDistanceText === 'string') {
+    now = last.start.downDistanceText;
+  }
+
+  return statusLine({
+    detail: espnStatusDetail(json),
+    now,
+    scoreline: espnScoreline(json)
+  });
+}
+
 export const EspnNflFeed = {
   sport: 'nfl',
   url: (eventId) => `${BASE}?event=${encodeURIComponent(eventId)}`,
   parse: parseNflSummary,
   gameState: espnGameState,
-  rowCount: countNflRows
+  rowCount: countNflRows,
+  status: nflStatus
 };

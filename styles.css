@@ -323,3 +323,16 @@
   cursor: pointer;
   font-size: 12px;
 }
+/* Live game state: clock, current situation, score. Sits above the explanation
+   and updates on every poll, so the overlay tracks the page even between plays. */
+#playsense-status {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  opacity: 0.75;
+  margin-bottom: 6px;
+  font-variant-numeric: tabular-nums;
+}
+#playsense-status:empty {
+  display: none;
+}

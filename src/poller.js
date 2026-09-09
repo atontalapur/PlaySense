@@ -26,6 +26,7 @@ export function createPoller({
   feed,
   eventId,
   onEvents,
+  onStatus = () => {},
   onFailure = () => {},
   onFinished = () => {},
   fetchImpl = fetch,
@@ -39,6 +40,8 @@ export function createPoller({
   let stopped = false;
   let emptyPolls = 0;
   let unparsedPolls = 0;
+  // Last line reported, so an unchanged status is not re-sent every 10 seconds.
+  let lastStatus = null;
   // Some feeds are legitimately sparse (see emptyIsFailure on OpenF1Feed and
   // the DOM scraper), so the empty-poll rule is opt-out per feed.
   const emptyIsFailure = feed.emptyIsFailure !== false;
@@ -86,6 +89,16 @@ export function createPoller({
         onFailure('unparsed-feed');
         return;
       }
+    }
+
+    // Reported before the dedupe below, and independently of it. This is the
+    // whole point of the status line: the MLB parser only yields a play when an
+    // at-bat completes, so between at-bats there are no fresh events at all
+    // while the count, the outs and the score keep moving.
+    if (result.status && result.status !== lastStatus) {
+      lastStatus = result.status;
+      await onStatus(result.status);
+      if (stopped) return;
     }
 
     // Filter and mark in one pass. Computing `fresh` before marking would let
