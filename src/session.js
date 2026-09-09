@@ -2,6 +2,7 @@ import { detectGame, feedForSport } from './feeds/index.js';
 import { createPoller } from './poller.js';
 import { createDomScrapeFeed, createTabScrapeFetch } from './feeds/dom-scrape.js';
 import { IMPORTANCE } from './events.js';
+import { resolveF1Session, describeF1Unavailable } from './feeds/f1-session.js';
 
 // How many of the plays swallowed by the priming fetch are replayed as context
 // when monitoring starts. Enough that the overlay opens with something real in
@@ -24,13 +25,18 @@ export function createSession({ tabId, url, deps, seed = [] }) {
   // because switchToFinished also nulls the poller and the final plays of a
   // game are exactly the ones that must still be delivered.
   let halted = false;
+  // Why start() refused, when it did. F1 pages are real game pages that simply
+  // have no session running, and saying "not a supported live game" there is
+  // what made the wrong-session bug hard to spot.
+  let unavailable = null;
 
   const state = () => ({
     sport: detected ? detected.sport : null,
     eventId: detected ? detected.eventId : null,
     degraded,
     finished,
-    active: poller !== null
+    active: poller !== null,
+    unavailable
   });
 
   // Spec 4.3: the game is over, so there is nothing left to poll for. Retains
@@ -96,12 +102,32 @@ export function createSession({ tabId, url, deps, seed = [] }) {
 
   return {
     state,
+    unavailableReason: () => unavailable,
     seenIds: () => (poller ? poller.seenIds() : seed),
     async start() {
       if (!detected) return false;
+
+      // F1 is the one sport whose feed id is not in the URL. Resolving it is
+      // also the only chance to notice that the page's race is not running,
+      // which is the difference between explaining this race and replaying an
+      // unrelated one.
+      let eventId = detected.eventId;
+      if (detected.sport === 'f1') {
+        const resolved = await resolveF1Session({
+          raceId: detected.pageId,
+          fetchImpl: deps.fetchImpl,
+          now: deps.now ? deps.now() : new Date()
+        });
+        if (!resolved || resolved.phase !== 'live') {
+          unavailable = describeF1Unavailable(resolved);
+          return false;
+        }
+        eventId = resolved.sessionKey;
+      }
+
       poller = createPoller({
         feed: feedForSport(detected.sport),
-        eventId: detected.eventId,
+        eventId,
         fetchImpl: deps.fetchImpl,
         onEvents: (evts) => emit(evts),
         onStatus: (status) => sendStatus(status),

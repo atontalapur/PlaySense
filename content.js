@@ -547,7 +547,10 @@ class PlaySense {
         void chrome.runtime.lastError;
         if (!reply || !reply.ok) {
           this.isActive = false;
-          this.addEvent('System', 'This page is not a supported live game.');
+          // An F1 page whose race is not running is a real, supported page with
+          // nothing live on it. Saying "not supported" there is what hid the
+          // wrong-session bug: the message was wrong in a believable way.
+          this.addEvent('System', (reply && reply.reason) || 'This page is not a supported live game.');
           return;
         }
         if (!this.isActive) return;

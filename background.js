@@ -78,7 +78,7 @@ function stopSession(tabId) {
 // own session.
 async function ensureSession(tabId, url) {
   const existing = sessions.get(tabId);
-  if (existing) return existing;
+  if (existing) return { session: existing, reason: null };
 
   return once(inFlight, tabId, async () => {
     const stored = await storageGet([seenKey(tabId)]);
@@ -90,9 +90,9 @@ async function ensureSession(tabId, url) {
       seed
     });
     const started = await session.start();
-    if (!started) return null;
+    if (!started) return { session: null, reason: session.unavailableReason() };
     sessions.set(tabId, session);
-    return session;
+    return { session, reason: null };
   });
 }
 
@@ -123,9 +123,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     stopSession(tabId);
     storageRemove([seenKey(tabId)])
       .then(() => ensureSession(tabId, request.url))
-      .then(async (session) => {
+      .then(async ({ session, reason }) => {
         if (session) await pumpAndSave(session, tabId);
-        sendResponse({ ok: Boolean(session), state: session ? session.state() : null });
+        sendResponse({
+          ok: Boolean(session),
+          state: session ? session.state() : null,
+          reason: reason || null
+        });
       })
       // Without this, a rejected storage call, session.start(), or fetch
       // never reaches sendResponse and the caller's callback silently hangs.
@@ -139,9 +143,9 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   // drives one poll cycle and resets this worker's 30s idle timer.
   if (request.action === 'poll') {
     ensureSession(tabId, request.url)
-      .then(async (session) => {
+      .then(async ({ session, reason }) => {
         if (!session) {
-          sendResponse({ ok: false, reason: 'not-a-game' });
+          sendResponse({ ok: false, reason: reason || 'not-a-game' });
           return;
         }
         await pumpAndSave(session, tabId);

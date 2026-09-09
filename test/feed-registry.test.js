@@ -45,14 +45,15 @@ test('detects f1 race pages using ESPNs real /_/id/ shape', () => {
   assert.equal(got.pageId, '600057442');
 });
 
-test('f1 eventId is the OpenF1 session key, not the ESPN race id', () => {
+test('f1 has no eventId in the url, because the id spaces do not meet', () => {
   // ESPN race ids and OpenF1 session keys are different id spaces: passing
-  // ESPN's 600057442 to OpenF1 returns 404 "No results found". The ESPN id
-  // only tells us the user is on an F1 page; the data comes from OpenF1's
-  // current session.
+  // ESPN's 600057442 to OpenF1 returns 404 "No results found". This used to
+  // return the literal 'latest', which is how a page for one race ended up
+  // showing race control from another. The session key is resolved by date at
+  // start, in src/feeds/f1-session.js.
   const got = detectGame('https://www.espn.com/f1/race/_/id/600057442');
-  assert.equal(got.eventId, 'latest');
-  assert.notEqual(got.eventId, got.pageId);
+  assert.equal(got.eventId, null);
+  assert.equal(got.pageId, '600057442', 'the page id is still needed to resolve it');
 });
 
 test('nfl and mlb eventId and pageId are the same ESPN id', () => {

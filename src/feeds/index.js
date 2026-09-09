@@ -18,11 +18,10 @@ const BALL_PATH = /^\/(nfl|mlb)\/(?:game|playbyplay|boxscore)\/_\/gameId\/(\d+)/
 const BALL_QUERY = /^\/(nfl|mlb)\/(?:game|playbyplay|boxscore)\/?$/i;
 const F1_PATH = /^\/f1\/(?:race|results)\/_\/id\/(\d+)/i;
 
-// OpenF1 keys on its own session_key, a different id space from ESPN's race
-// id (ESPN's 600057442 returns 404 from OpenF1). The ESPN id only tells us the
-// viewer is on an F1 page; "latest" resolves to OpenF1's current session, which
-// is the running one during a live race — exactly what this extension explains.
-const F1_SESSION_KEY = 'latest';
+// OpenF1 keys on its own session_key, a different id space from ESPN's race id
+// (ESPN's 600057442 returns 404 from OpenF1), so an F1 page's eventId cannot be
+// read off the URL. It is resolved by date in src/feeds/f1-session.js and
+// arrives null here; the session fills it in at start.
 
 export function detectGame(rawUrl) {
   if (!rawUrl || typeof rawUrl !== 'string') return null;
@@ -38,7 +37,7 @@ export function detectGame(rawUrl) {
 
   const f1 = parsed.pathname.match(F1_PATH);
   if (f1) {
-    return { sport: 'f1', eventId: F1_SESSION_KEY, pageId: f1[1] };
+    return { sport: 'f1', eventId: null, pageId: f1[1] };
   }
 
   const path = parsed.pathname.match(BALL_PATH);
