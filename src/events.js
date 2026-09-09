@@ -26,6 +26,11 @@ export function classifyImportance(raw = {}) {
   if (raw.sport === 'f1') {
     if (raw.flag) return IMPORTANCE.HIGH;
     if (F1_HIGH_CATEGORIES.has(raw.category)) return IMPORTANCE.HIGH;
+    // Scraped text carries neither a flag nor a category, so the LOW default
+    // below suppressed every event a degraded F1 session produced — leaving the
+    // overlay announcing the fallback and then saying nothing for the rest of
+    // the session. NORMAL matches what scraped NFL and MLB events already get.
+    if (raw.degraded === true) return IMPORTANCE.NORMAL;
     return IMPORTANCE.LOW;
   }
 

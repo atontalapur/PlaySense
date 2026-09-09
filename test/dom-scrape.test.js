@@ -56,3 +56,19 @@ test('dom scrape feed works end to end through fetchEvents', async () => {
   assert.equal(result.ok, true);
   assert.equal(result.events[0].text, 'Interception');
 });
+
+// classifyImportance returns LOW for an F1 event with no flag and no category,
+// which is every event this feed produces. emit() drops LOW, so a degraded F1
+// session announced the fallback and then said nothing at all for the rest of
+// the session, with the poller still beating every 10 seconds.
+test('scraped f1 events survive the importance filter', async () => {
+  const events = createDomScrapeFeed('f1').parse([
+    { text: 'SAFETY CAR DEPLOYED — INCIDENT TURN 4' },
+    { text: 'YELLOW FLAG IN TRACK SECTOR 12 — DEBRIS ON TRACK' }
+  ]);
+
+  assert.equal(events.length, 2);
+  for (const event of events) {
+    assert.notEqual(event.importance, 'low', `"${event.text}" must reach the overlay`);
+  }
+});

@@ -36,7 +36,10 @@ export function createDomScrapeFeed(sport) {
             period: null,
             clock: null,
             score: null,
-            isScoring: false
+            isScoring: false,
+            // Read by classifyImportance: an F1 event with no flag and no
+            // category is LOW, which is every event this feed produces.
+            degraded: true
           });
           // Marks provenance. The Claude explainer must refuse these — scraped
           // text has no schema and must never be sent to the model.
