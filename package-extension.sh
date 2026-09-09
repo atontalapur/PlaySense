@@ -14,7 +14,7 @@ cp assets/icon16.png assets/icon48.png assets/icon128.png "$STAGE/assets/"
 cp -R src/. "$STAGE/src/"
 
 # Guard: nothing that only exists for development may ship.
-for bad in test docs demo .git .superpowers package.json test-scraping.html README.md; do
+for bad in test docs demo .git .superpowers package.json test-scraping.html README.md dev.env; do
   if [ -e "$STAGE/$bad" ]; then echo "ERROR: $bad leaked into the package" >&2; exit 1; fi
 done
 

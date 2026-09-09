@@ -2,6 +2,7 @@
 import { createSession } from './src/session.js';
 import { once } from './src/once.js';
 import { probeLanguageModel } from './src/explainers/nano-probe.js';
+import { seedKeyFromDevEnv } from './src/dev-key.js';
 import {
   RuleExplainer, createClaudeExplainer, createDailyBudget, createExplainerChain
 } from './src/explainers/index.js';
@@ -186,6 +187,18 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   return false;
+});
+
+// Development convenience: pick up a key from dev.env so a fresh browser
+// profile does not mean pasting it into the popup again. Never overwrites a key
+// already in storage, and dev.env is absent on every normal install.
+seedKeyFromDevEnv({
+  fetchImpl: (url) => fetch(url),
+  urlFor: (file) => chrome.runtime.getURL(file),
+  getStored: async () => (await localStorageGet(['anthropicApiKey'])).anthropicApiKey || null,
+  setStored: (key) => localStorageSet({ anthropicApiKey: key, anthropicKeyVerified: false })
+}).then((result) => {
+  if (result.seeded) console.log('PlaySense: seeded an API key from dev.env (unverified)');
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
