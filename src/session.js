@@ -90,7 +90,10 @@ export function createSession({ tabId, url, deps, seed = [] }) {
     // Carry the seen ids across the swap, or the scrape feed replays the game.
     const carried = poller ? poller.seenIds() : seed;
     if (poller) poller.stop();
-    await deps.sendToTab(tabId, { action: 'degraded', reason });
+    // Installed BEFORE the notification is sent. sendToTab resolves on a task,
+    // not a microtask, so pump()'s continuation ran first and re-ticked the
+    // poller that had just been stopped — the pump that tripped the fallback
+    // performed no scrape at all, and the first real one was 10 seconds later.
     poller = createPoller({
       feed: createDomScrapeFeed(detected.sport),
       eventId: detected.eventId,
@@ -98,6 +101,7 @@ export function createSession({ tabId, url, deps, seed = [] }) {
       onEvents: (evts) => emit(evts),
       seed: carried
     });
+    await deps.sendToTab(tabId, { action: 'degraded', reason });
   }
 
   return {
@@ -157,6 +161,11 @@ export function createSession({ tabId, url, deps, seed = [] }) {
     // the freshly-created degraded poller so no cycle is lost.
     async pump() {
       if (!poller) return;
+      // Read before the tick, so only the pump that actually trips the
+      // fallback drives the replacement poller below. Testing `degraded`
+      // alone made every later pump tick the DOM scraper twice — a wasted
+      // message and full-page query on every beat for the rest of the game.
+      const wasDegraded = degraded;
       if (pendingRecap.length > 0) {
         // Cleared before the await, not after: emit() is long (one explainer
         // call per event) and a second beat landing mid-flight must not send
@@ -166,7 +175,7 @@ export function createSession({ tabId, url, deps, seed = [] }) {
         await emit(recap);
       }
       await poller.tick();
-      if (degraded && poller) await poller.tick();
+      if (!wasDegraded && degraded && poller) await poller.tick();
     },
     stop() {
       halted = true;

@@ -431,3 +431,40 @@ test('stopping before the first pump discards the recap rather than paying for i
   assert.deepEqual(delivered, []);
   assert.equal(explainCalls, 0);
 });
+
+// switchToDegraded used to install the replacement poller only after awaiting
+// sendToTab. Chrome's sendMessage resolves on a task, not a microtask, so
+// pump()'s continuation ran first and re-ticked the poller that had just been
+// stopped: the pump that tripped the fallback performed no scrape at all. The
+// older test missed it because its fake sendToTab resolved as a microtask.
+test('the pump that trips the fallback scrapes on that same beat', async () => {
+  let scrapes = 0;
+  const d = deps({
+    fetchImpl: async () => ({ ok: false, status: 502, json: async () => ({}) }),
+    // Resolves on a task, the way chrome.tabs.sendMessage does.
+    sendToTab: async (tabId, msg) => {
+      if (msg.action === 'legacyScrape') scrapes += 1;
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return { rows: [{ text: 'Touchdown on a 12 yard pass to the end zone' }] };
+    }
+  });
+  const session = createSession({
+    tabId: 1, url: 'https://www.espn.com/nfl/game/_/gameId/401873298', deps: d
+  });
+  await session.start();
+
+  await session.pump();
+  await session.pump();
+  assert.equal(session.state().degraded, false);
+  assert.equal(scrapes, 0, 'nothing is scraped while the structured feed is still trusted');
+
+  await session.pump();
+  assert.equal(session.state().degraded, true);
+  assert.equal(scrapes, 1, 'the degrading pump drives the new poller, so no cycle is lost');
+
+  // And every pump after it drives that poller exactly once. Testing `degraded`
+  // alone double-ticked the scraper on every beat for the rest of the game.
+  await session.pump();
+  assert.equal(scrapes, 2, 'later beats scrape once each, not twice');
+  session.stop();
+});

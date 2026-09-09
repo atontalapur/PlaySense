@@ -62,7 +62,9 @@ export function createPoller({
     if (stopped) return;
     if (!result.ok) {
       fetchFailures += 1;
-      if (fetchFailures >= FETCH_FAILURES_BEFORE_DEGRADE) onFailure(result.reason);
+      // Awaited, like the two below: onFailure swaps the caller's poller and
+      // messages the tab, and an unawaited rejection here has nowhere to go.
+      if (fetchFailures >= FETCH_FAILURES_BEFORE_DEGRADE) await onFailure(result.reason);
       return;
     }
     // Consecutive, like the two counters below: one good poll means the feed is
@@ -95,11 +97,11 @@ export function createPoller({
         unparsedPolls = 0;
       }
       if (emptyPolls >= EMPTY_POLLS_BEFORE_DEGRADE) {
-        onFailure('empty-feed');
+        await onFailure('empty-feed');
         return;
       }
       if (unparsedPolls >= UNPARSED_POLLS_BEFORE_DEGRADE) {
-        onFailure('unparsed-feed');
+        await onFailure('unparsed-feed');
         return;
       }
     }
