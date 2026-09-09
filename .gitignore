@@ -1,1 +1,7 @@
 TROUBLESHOOTING.md
+# Chrome Web Store upload packages
+playsense-*.zip
+
+# Local Anthropic key for development. Read by background.js at startup and
+# never packaged: see src/dev-key.js and the guard in package-extension.sh.
+dev.env

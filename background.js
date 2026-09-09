@@ -1,31 +1,231 @@
-// Background service worker for PlaySense extension
+// background.js — service worker (ES module; manifest sets "type": "module")
+import { createSession } from './src/session.js';
+import { once } from './src/once.js';
+import { probeLanguageModel } from './src/explainers/nano-probe.js';
+import { seedKeyFromDevEnv } from './src/dev-key.js';
+import {
+  RuleExplainer, createClaudeExplainer, createDailyBudget, createExplainerChain
+} from './src/explainers/index.js';
 
-// Handle extension installation
-chrome.runtime.onInstalled.addListener(() => {
-  console.log('PlaySense extension installed');
+const sessions = new Map(); // tabId -> session (lost if the worker restarts)
+// tabId -> in-flight session-construction promise. Guards against two
+// messages for the same tab (two poll beats, start racing a poll, a burst
+// delivered as the worker wakes from termination) each building and pumping
+// their own session before either reaches sessions.set — see Task 9 fix
+// round 1. Concurrent callers must all receive the same session object.
+const inFlight = new Map();
+// tabId -> how many times monitoring has been stopped for that tab. A session
+// can be under construction when the user stops: it is not in `sessions` yet,
+// so stopSession cannot reach it, and the factory below would go on to install
+// a session nothing can stop. Construction records the number it began at and
+// discards itself if that number has moved. Entries are never removed — a
+// removed one would read back as 0 and match a construction that began at 0 —
+// but they are one integer per tab in a worker Chrome kills after 30s idle.
+const stopCount = new Map();
+const stopsFor = (tabId) => stopCount.get(tabId) || 0;
+
+const seenKey = (tabId) => `seen-${tabId}`;
+
+const localStorageGet = (keys) => new Promise((resolve) => chrome.storage.local.get(keys, resolve));
+const localStorageSet = (items) => new Promise((resolve) => chrome.storage.local.set(items, resolve));
+
+// One ledger for the whole worker. DAILY_CALL_CAP is a per-install spending
+// limit, so it must not follow the per-tab explainer lifetime below: two tabs
+// each holding their own counter would spend 2x the cap and overwrite each
+// other's stored count.
+const claudeBudget = createDailyBudget({
+  getBudget: async () => (await localStorageGet(['claudeBudget'])).claudeBudget || null,
+  setBudget: async (budget) => localStorageSet({ claudeBudget: budget })
 });
 
-// Handle messages between different parts of the extension
+// Built per tab inside ensureSession, so isCancelled can be bound to THIS
+// tab's liveness. stopSession deletes the map entry, so an in-flight call is
+// cancelled the moment the user stops monitoring.
+function buildExplainer(tabId) {
+  const claude = createClaudeExplainer({
+    getKey: async () => (await localStorageGet(['anthropicApiKey'])).anthropicApiKey || null,
+    budget: claudeBudget,
+    isCancelled: () => !sessions.has(tabId)
+  });
+  return createExplainerChain([claude, RuleExplainer]);
+}
+
+// chrome.storage.session is in-memory and cleared when the browser session ends,
+// but it SURVIVES a service worker restart — which the in-memory Map does not.
+const storageGet = (keys) => new Promise((r) => chrome.storage.session.get(keys, r));
+const storageSet = (items) => new Promise((r) => chrome.storage.session.set(items, r));
+const storageRemove = (keys) => new Promise((r) => chrome.storage.session.remove(keys, r));
+
+function sendToTab(tabId, message) {
+  return new Promise((resolve) => {
+    chrome.tabs.sendMessage(tabId, message, (reply) => {
+      // Reading lastError suppresses the unchecked-error warning when the
+      // content script is not present on the page.
+      void chrome.runtime.lastError;
+      resolve(reply);
+    });
+  });
+}
+
+function stopSession(tabId) {
+  stopCount.set(tabId, stopsFor(tabId) + 1);
+  const session = sessions.get(tabId);
+  if (session) {
+    session.stop();
+    sessions.delete(tabId);
+  }
+  // A stop mid-construction must not leave a stale in-flight promise that a
+  // later message would be handed back.
+  inFlight.delete(tabId);
+}
+
+// Rebuilds the session if the worker was terminated since the last message,
+// seeding it with the ids already shown so the game is not replayed.
+// Construction is memoised per tab via `once` so that two messages for the
+// same tab arriving before the first session finishes building (two poll
+// beats, start racing a poll, a burst on worker wake) share the same
+// in-progress construction instead of each building — and pumping — their
+// own session.
+async function ensureSession(tabId, url) {
+  const existing = sessions.get(tabId);
+  if (existing) return { session: existing, reason: null };
+
+  return once(inFlight, tabId, async () => {
+    const stopsAtStart = stopsFor(tabId);
+    const stored = await storageGet([seenKey(tabId)]);
+    const seed = stored[seenKey(tabId)] || [];
+    const session = createSession({
+      tabId,
+      url,
+      deps: { fetchImpl: (u) => fetch(u), sendToTab, explainer: buildExplainer(tabId) },
+      seed
+    });
+    const started = await session.start();
+    // Monitoring was stopped, or the tab closed, while this was being built.
+    // Installing it now would leave a session that stopSession has already
+    // walked past: it would keep polling, keep emitting to the tab, and read
+    // as live to the Claude explainer's isCancelled, which is bound to
+    // membership of `sessions` and is what stops a stopped user being billed.
+    if (stopsFor(tabId) !== stopsAtStart) {
+      session.stop();
+      return { session: null, reason: 'stopped' };
+    }
+    if (!started) return { session: null, reason: session.unavailableReason() };
+    sessions.set(tabId, session);
+    return { session, reason: null };
+  });
+}
+
+async function pumpAndSave(session, tabId) {
+  await session.pump();
+  await storageSet({ [seenKey(tabId)]: session.seenIds() });
+  // The game ended during this pump. Drop the session so the next beat cannot
+  // rebuild and re-poll it; the content script stops its clock off the
+  // `finished` flag in the reply, and this is the belt to that braces.
+  if (session.state().finished) {
+    // Keep the seen ids. A beat already in flight when the game ended can
+    // still arrive after this eviction and rebuild the session; seeded with
+    // the finished game's ids it re-polls once and emits nothing, whereas an
+    // empty seed would replay the entire game as fresh events and bill a
+    // Claude call for every high-importance play in it.
+    stopSession(tabId);
+  }
+}
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === 'log_event') {
-    // Could store events in chrome.storage if needed for persistence
-    console.log('Game event:', request.event);
+  const tabId = sender.tab ? sender.tab.id : request.tabId;
+  if (typeof tabId !== 'number') {
+    sendResponse({ ok: false, reason: 'no-tab' });
+    return false;
   }
 
-  // Always return true for async message handling
-  return true;
-});
-
-// Optional: Handle tab updates to re-inject content script if needed
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url && tab.url.includes('espn.com')) {
-    // Content script should already be injected via manifest
-    // This is just a placeholder for any additional logic
+  if (request.action === 'start') {
+    stopSession(tabId);
+    storageRemove([seenKey(tabId)])
+      .then(() => ensureSession(tabId, request.url))
+      .then(async ({ session, reason }) => {
+        if (session) await pumpAndSave(session, tabId);
+        sendResponse({
+          ok: Boolean(session),
+          state: session ? session.state() : null,
+          reason: reason || null
+        });
+      })
+      // Without this, a rejected storage call, session.start(), or fetch
+      // never reaches sendResponse and the caller's callback silently hangs.
+      .catch((err) => {
+        sendResponse({ ok: false, reason: 'error', message: String(err && err.message || err) });
+      });
+    return true;
   }
+
+  // The content script owns the clock and beats every 10s. Each beat both
+  // drives one poll cycle and resets this worker's 30s idle timer.
+  if (request.action === 'poll') {
+    ensureSession(tabId, request.url)
+      .then(async ({ session, reason }) => {
+        if (!session) {
+          sendResponse({ ok: false, reason: reason || 'not-a-game' });
+          return;
+        }
+        await pumpAndSave(session, tabId);
+        sendResponse({ ok: true, state: session.state() });
+      })
+      .catch((err) => {
+        sendResponse({ ok: false, reason: 'error', message: String(err && err.message || err) });
+      });
+    return true;
+  }
+
+  if (request.action === 'stop') {
+    stopSession(tabId);
+    storageRemove([seenKey(tabId)])
+      .then(() => sendResponse({ ok: true }))
+      .catch((err) => {
+        sendResponse({ ok: false, reason: 'error', message: String(err && err.message || err) });
+      });
+    return true;
+  }
+
+  // Reports whether Chrome's built-in Prompt API is reachable from the service
+  // worker and from the page, which is the open question blocking a no-API-key
+  // explainer tier. Read-only: it creates no session and downloads no model.
+  if (request.action === 'probeNano') {
+    Promise.all([
+      probeLanguageModel(globalThis),
+      sendToTab(tabId, { action: 'probeNano' })
+    ])
+      .then(([worker, reply]) => {
+        sendResponse({ ok: true, worker, page: reply ? reply.probe : null });
+      })
+      .catch((err) => {
+        sendResponse({ ok: false, reason: 'error', message: String(err && err.message || err) });
+      });
+    return true;
+  }
+
+  if (request.action === 'getStatus') {
+    const session = sessions.get(tabId);
+    sendResponse({ ok: true, state: session ? session.state() : null });
+    return false;
+  }
+
+  return false;
 });
 
-// Handle browser action (extension icon) click
-chrome.action.onClicked.addListener((tab) => {
-  // This won't fire if we have a popup, but kept for completeness
-  chrome.tabs.sendMessage(tab.id, { action: 'toggle' });
+// Development convenience: pick up a key from dev.env so a fresh browser
+// profile does not mean pasting it into the popup again. Never overwrites a key
+// already in storage, and dev.env is absent on every normal install.
+seedKeyFromDevEnv({
+  fetchImpl: (url) => fetch(url),
+  urlFor: (file) => chrome.runtime.getURL(file),
+  getStored: async () => (await localStorageGet(['anthropicApiKey'])).anthropicApiKey || null,
+  setStored: (key) => localStorageSet({ anthropicApiKey: key, anthropicKeyVerified: false })
+}).then((result) => {
+  if (result.seeded) console.log('PlaySense: seeded an API key from dev.env (unverified)');
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  stopSession(tabId);
+  chrome.storage.session.remove(seenKey(tabId));
 });

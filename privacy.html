@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PlaySense — Privacy Policy</title>
+  <style>
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      max-width: 680px;
+      margin: 48px auto;
+      padding: 0 24px;
+      color: #1a1a1a;
+      line-height: 1.6;
+    }
+    h1 { font-size: 26px; margin-bottom: 8px; }
+    h2 { font-size: 20px; margin-top: 32px; }
+    p { margin: 8px 0; color: #444; }
+    .updated { color: #888; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>PlaySense Privacy Policy</h1>
+  <p class="updated">Last updated: August 27, 2026</p>
+
+  <h2>What PlaySense does</h2>
+  <p>PlaySense is a Chrome extension that reads ESPN game pages and displays plain-English explanations of live sports events in an overlay on your screen.</p>
+
+  <h2>What PlaySense sends, and where</h2>
+  <p>
+    To describe a live game, PlaySense requests public game data from two
+    third-party services:
+  </p>
+  <ul>
+    <li>
+      <strong>ESPN</strong> (<code>site.api.espn.com</code>) — public scores and
+      play-by-play for the game page you are viewing. PlaySense sends only the
+      public game identifier from the page URL.
+    </li>
+    <li>
+      <strong>OpenF1</strong> (<code>api.openf1.org</code>) — public Formula 1
+      race-control messages. PlaySense sends only the public session identifier.
+    </li>
+  </ul>
+  <p>
+    These requests contain no personal information, no account identifiers, and
+    no browsing history. PlaySense sends nothing about any page other than the
+    live game you are actively monitoring.
+  </p>
+  <h2>Optional AI explanations</h2>
+  <p>
+    If you choose to save an Anthropic API key, PlaySense sends the play type and
+    the public play description of major plays to Anthropic
+    (<code>api.anthropic.com</code>) to generate a plain-English explanation. No
+    personal information, browsing history, or page content beyond the play
+    description is sent.
+  </p>
+  <p>
+    Your API key is stored only in this browser via
+    <code>chrome.storage.local</code>. It is never sent anywhere except Anthropic,
+    and the extension author never receives it. Clearing the key in the popup
+    disables this feature immediately; PlaySense then uses only its built-in
+    explanations and contacts Anthropic not at all.
+  </p>
+  <p>
+    PlaySense limits itself to 500 explanation requests per day to protect you
+    from unexpected usage on your key.
+  </p>
+
+  <h2>What PlaySense stores</h2>
+  <p>
+    Everything below is stored only in this browser. None of it is transmitted
+    to the extension author, and PlaySense has no server to transmit it to.
+  </p>
+  <p>In <code>chrome.storage.local</code>, which persists until you remove it:</p>
+  <ul>
+    <li>Your Anthropic API key, if you have chosen to save one. Clearing it in
+      the popup deletes it.</li>
+    <li>A count of how many explanation requests have been made today, plus the
+      date it applies to. This is what enforces the 500-per-day limit above.</li>
+    <li>A single flag recording whether you have seen the welcome message.</li>
+  </ul>
+  <p>
+    In <code>chrome.storage.session</code>, which is held in memory and cleared
+    when you close the browser: the identifiers of the plays already shown for
+    each tab being monitored, so that a game is not replayed from the start.
+    These are removed when you stop monitoring or close the tab.
+  </p>
+  <p>
+    Game events themselves are held in memory for the current session and are
+    discarded when the tab closes.
+  </p>
+  <h2>What PlaySense does not do</h2>
+  <p>
+    No analytics, no tracking, no advertising, no accounts, and no transmission
+    of data to the extension author. PlaySense has no server.
+  </p>
+
+  <h2>Contact</h2>
+  <p>Questions about this policy can be directed to the extension's GitHub repository at <a href="https://github.com/atontalapur/PlaySense">github.com/atontalapur/PlaySense</a>.</p>
+</body>
+</html>
